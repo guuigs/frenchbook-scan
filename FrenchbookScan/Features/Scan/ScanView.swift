@@ -29,33 +29,28 @@ struct ScanView: View {
 
     var body: some View {
         ZStack {
-            if camera.permissionDenied {
-                permissionDeniedView
-            } else {
-                CameraPreview(captureSession: camera.captureSession)
-                    .ignoresSafeArea()
+            captureLayer
 
-                targetingReticle
+            VStack(spacing: 0) {
+                topBar
+                Spacer()
+                bottomBar
+            }
 
-                VStack(spacing: 0) {
-                    topBar
-                    Spacer()
-                    bottomBar
-                }
-
-                if let flash {
-                    FlashConfirmationView(state: flash)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                        .zIndex(1)
-                }
+            if let flash {
+                FlashConfirmationView(state: flash)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(1)
             }
         }
         .animation(.easeOut(duration: 0.18), value: flash)
         .statusBarHidden(false)
         .onAppear {
             Feedback.prepare()
+            #if !targetEnvironment(simulator)
             camera.onCode = handle
             camera.start()
+            #endif
         }
         .onDisappear {
             flashTask?.cancel()
@@ -100,6 +95,25 @@ struct ScanView: View {
         }
         .sheet(isPresented: $showChecklist, onDismiss: resumeCamera) {
             ScanChecklistView()
+        }
+    }
+
+    /// Aperçu caméra sur appareil, panneau d'injection dans le simulateur.
+    private var captureLayer: some View {
+        ZStack {
+            #if targetEnvironment(simulator)
+            SimulatedScannerPanel(lines: coordinator.session.lines, onScan: handle)
+                .padding(.top, 130)
+                .padding(.bottom, 70)
+            #else
+            if camera.permissionDenied {
+                permissionDeniedView
+            } else {
+                CameraPreview(captureSession: camera.captureSession)
+                    .ignoresSafeArea()
+                targetingReticle
+            }
+            #endif
         }
     }
 

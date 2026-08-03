@@ -211,4 +211,65 @@ final class CartonCoordinator: ObservableObject {
     private func persist() {
         SessionStore.save(session)
     }
+
+    #if DEBUG
+    /// Charge un bon de commande fictif pour parcourir tout le flux sans
+    /// caméra, sans clé API et sans consommer d'appel Mistral.
+    ///
+    /// Les anomalies sont volontaires : une divergence de lecture, une clé
+    /// ISBN cassée et une ligne vue par un seul moteur, de quoi éprouver
+    /// chaque branche de l'écran de contrôle.
+    func loadDemoOrder() {
+        SessionStore.prepare()
+
+        var demo = CartonSession()
+        demo.supplier = "Éditions de démonstration"
+        demo.reference = "BC-DEMO-4871"
+        demo.pageCount = 2
+        demo.lines = [
+            OrderLine(isbn: "9782070368228", title: "Le Petit Prince",
+                      author: "Antoine de Saint-Exupéry",
+                      quantityOrdered: 1, quantityDelivered: 1, pageIndex: 0),
+
+            OrderLine(isbn: "9782070612758", title: "L'Étranger",
+                      author: "Albert Camus",
+                      quantityOrdered: 3, quantityDelivered: 3, pageIndex: 0),
+
+            OrderLine(isbn: "9782021400984", title: "Les Misérables — tome I",
+                      author: "Victor Hugo",
+                      quantityOrdered: 5, quantityDelivered: 5, pageIndex: 0,
+                      issues: [FieldIssue(field: .title, kind: .conflict,
+                                          candidateA: "Les Misérables — tome I",
+                                          candidateB: "Les Misérables — tome 1")]),
+
+            // Clé de contrôle volontairement fausse : le bon chiffre est 7.
+            OrderLine(isbn: "9782070782010", title: "Voyage au bout de la nuit",
+                      author: "Louis-Ferdinand Céline",
+                      quantityOrdered: 2, quantityDelivered: 2, pageIndex: 1,
+                      issues: [FieldIssue(field: .isbn, kind: .invalidChecksum,
+                                          candidateA: "9782070782010", candidateB: "")]),
+
+            OrderLine(isbn: "9782213242583", title: "Madame Bovary",
+                      author: "Gustave Flaubert",
+                      quantityOrdered: 4, quantityDelivered: 2, pageIndex: 1),
+
+            OrderLine(isbn: "9782072678455", title: "La Peste",
+                      author: "Albert Camus",
+                      quantityOrdered: 1, quantityDelivered: 1, pageIndex: 1,
+                      issues: [FieldIssue(field: .title, kind: .singleSource,
+                                          candidateA: "— absente de la 1ʳᵉ lecture —",
+                                          candidateB: "La Peste")]),
+
+            OrderLine(isbn: "9782070179268", title: "Bel-Ami",
+                      author: "Guy de Maupassant",
+                      quantityOrdered: 6, quantityDelivered: 6, pageIndex: 1)
+        ]
+
+        session = demo
+        exportURLs = []
+        errorMessage = nil
+        SessionStore.save(demo)
+        phase = .review
+    }
+    #endif
 }

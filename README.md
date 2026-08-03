@@ -61,10 +61,33 @@ La clé API Mistral est stockée dans le Trousseau iOS
 (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` : jamais sauvegardée, jamais
 migrée vers un autre appareil). Rien de secret n'est dans le code source.
 
+## Tester
+
+Le simulateur iOS ne fournit **aucune caméra virtuelle** : `AVCaptureDevice`
+n'y expose aucun périphérique et le scanner de documents VisionKit y est
+indisponible. C'est une limite du simulateur, pas de l'app.
+
+Deux replis permettent d'y dérouler malgré tout la quasi-totalité du flux :
+
+| Sur simulateur | Sur iPhone |
+|---|---|
+| Import des pages depuis la photothèque (glissez une photo de bon sur la fenêtre du simulateur) | Scanner de documents VisionKit |
+| Panneau d'injection : touchez un titre pour simuler son scan, ou saisissez un code arbitraire | Lecture caméra en continu |
+
+La lecture OCR, le contrôle du bon, la feuille de quantité, le récapitulatif et
+l'export fonctionnent normalement au simulateur — le réseau y est disponible.
+
+En complément, **Réglages → Charger un bon de démonstration** (versions Debug
+uniquement) injecte un bon fictif de 7 titres contenant une divergence de
+lecture, une clé ISBN cassée et une ligne à source unique : de quoi parcourir
+tout le parcours sans caméra, sans clé API et sans consommer d'appel Mistral.
+
+Restent à valider sur iPhone : l'ergonomie réelle de l'enchaînement des scans,
+la mise au point rapprochée et la qualité de lecture des bons photographiés.
+
 ## Installation
 
-Prérequis : **Xcode 16+**, un iPhone sous **iOS 17+** (la caméra ne fonctionne
-pas dans le simulateur).
+Prérequis : **Xcode 16+**, et un iPhone sous **iOS 17+** pour l'usage réel.
 
 ```bash
 open FrenchbookScan.xcodeproj
@@ -72,7 +95,8 @@ open FrenchbookScan.xcodeproj
 
 1. Onglet *Signing & Capabilities* → choisissez votre équipe de développement.
    Changez `PRODUCT_BUNDLE_IDENTIFIER` si `com.frenchbook.scan` est déjà pris.
-2. Compilez sur un iPhone physique.
+2. Compilez sur simulateur pour parcourir l'interface, sur iPhone physique pour
+   l'usage réel.
 3. Au premier lancement : **Réglages** (roue crantée) → collez votre clé API
    Mistral → *Tester la connexion*.
 

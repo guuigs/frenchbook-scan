@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var coordinator: CartonCoordinator
     @Environment(\.dismiss) private var dismiss
 
     @State private var keyDraft = ""
@@ -119,6 +120,21 @@ struct SettingsView: View {
                 } footer: {
                     Text("Supprime immédiatement le bon de commande lu, ses photos et le comptage en cours. Sans effet si aucun carton n'est ouvert.")
                 }
+
+                #if DEBUG
+                Section {
+                    Button {
+                        coordinator.loadDemoOrder()
+                        dismiss()
+                    } label: {
+                        Label("Charger un bon de démonstration", systemImage: "hammer")
+                    }
+                } header: {
+                    Text("Développement")
+                } footer: {
+                    Text("Bon fictif de 7 titres comportant une divergence de lecture, une clé ISBN cassée et une ligne à source unique. Permet de dérouler tout le flux sans caméra ni clé API. Absent des versions de production.")
+                }
+                #endif
             }
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)

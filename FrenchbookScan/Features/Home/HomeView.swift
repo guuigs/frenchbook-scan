@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Écran d'attente : le poste est prêt à recevoir un nouveau carton.
 struct HomeView: View {
@@ -7,6 +8,17 @@ struct HomeView: View {
 
     @State private var isCapturing = false
     @State private var showSettings = false
+    @State private var photoSelection: [PhotosPickerItem] = []
+
+    /// Le scanner de documents n'existe pas dans le simulateur : l'import
+    /// photothèque y devient le seul chemin d'entrée.
+    private var documentScannerAvailable: Bool {
+        #if targetEnvironment(simulator)
+        false
+        #else
+        true
+        #endif
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,13 +30,25 @@ struct HomeView: View {
                         configurationNotice
                     }
 
-                    Button {
-                        isCapturing = true
-                    } label: {
-                        Label("Photographier le bon de commande", systemImage: "doc.viewfinder")
+                    VStack(spacing: 10) {
+                        if documentScannerAvailable {
+                            Button {
+                                isCapturing = true
+                            } label: {
+                                Label("Photographier le bon de commande", systemImage: "doc.viewfinder")
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(!settings.isConfigured)
+
+                            // Utile quand le bon arrive déjà en photo, par mail
+                            // ou depuis un autre appareil.
+                            photoPicker("Importer depuis la photothèque")
+                                .buttonStyle(SecondaryButtonStyle())
+                        } else {
+                            photoPicker("Importer les pages du bon")
+                                .buttonStyle(PrimaryButtonStyle())
+                        }
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(!settings.isConfigured)
 
                     steps
                 }
@@ -67,6 +91,37 @@ struct HomeView: View {
         } message: {
             Text("Un carton de \(coordinator.session.lines.count) titre(s) était en cours. Voulez-vous reprendre là où vous en étiez ?")
         }
+    }
+
+    /// L'ordre de sélection est conservé (`.ordered`) : les pages d'un bon ne
+    /// sont pas interchangeables.
+    private func photoPicker(_ label: String) -> some View {
+        PhotosPicker(
+            selection: $photoSelection,
+            maxSelectionCount: 30,
+            selectionBehavior: .ordered,
+            matching: .images
+        ) {
+            Label(label, systemImage: "photo.on.rectangle")
+        }
+        .disabled(!settings.isConfigured)
+        .onChange(of: photoSelection) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await importPhotos(items) }
+        }
+    }
+
+    private func importPhotos(_ items: [PhotosPickerItem]) async {
+        var pages: [UIImage] = []
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
+                pages.append(image)
+            }
+        }
+        photoSelection = []
+        guard !pages.isEmpty else { return }
+        await coordinator.processPages(pages)
     }
 
     private var header: some View {
