@@ -1,0 +1,18 @@
+{
+  "name": "Réception — cartons de livres",
+  "short_name": "Réception",
+  "description": "Contrôle de réception des cartons de livres : lecture du bon de commande et comptage par scan.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

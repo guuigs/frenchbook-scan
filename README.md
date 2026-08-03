@@ -1,23 +1,24 @@
-# FrenchbookScan
+# Réception — cartons de livres
 
-Application iOS de réception de cartons de livres à l'export.
+Application web de réception de cartons de livres à l'export, conçue pour un
+iPhone en entrepôt et déployée sur Vercel.
 
 Un carton arrive, un bon de commande papier est dedans. L'app le photographie,
-le lit, vous fait contrôler ce qui est douteux, puis vous fait scanner les
-livres un à un pour vérifier physiquement ce qui est réellement dans le carton.
-À la clôture, elle produit un récapitulatif des écarts et efface tout.
+le lit, fait contrôler ce qui est douteux, puis fait scanner les livres un à un
+pour vérifier physiquement ce qui est réellement dans le carton. À la clôture,
+elle produit un récapitulatif des écarts et efface tout.
 
 ---
 
 ## Le déroulé
 
-| Phase | Écran | Ce qui se passe |
-|---|---|---|
-| 1. Capture | Scanner de documents iOS | Photo des pages du bon, recadrage et correction de perspective automatiques, multipage. |
-| 2. Lecture | Écran de progression | Chaque page passe dans **deux moteurs Mistral indépendants**, les résultats sont comparés. |
-| 3. Contrôle | Liste triée | Seules les lignes divergentes ou à ISBN invalide remontent. Photo de la page en regard pour trancher. |
-| 4. Scan | Caméra permanente | Un scan par livre. Quantité 1 → flash de confirmation 1,4 s. Quantité > 1 → feuille de validation. |
-| 5. Clôture | Récapitulatif | Manques, surplus, abîmés, hors commande. Export PDF + CSV, puis **purge totale**. |
+| Phase | Ce qui se passe |
+|---|---|
+| 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
+| 2. Lecture | Chaque page passe dans **deux moteurs Mistral indépendants**, côté serveur, et les résultats sont comparés champ à champ. |
+| 3. Contrôle | Seules les lignes divergentes ou à ISBN invalide remontent, avec la photo de la page en regard pour trancher. |
+| 4. Scan | Caméra en continu. Quantité 1 → voile vert plein écran, 1,2 s. Quantité > 1 → feuille de validation. |
+| 5. Clôture | Manques, surplus, abîmés, hors commande. Export PDF + CSV, puis **purge totale**. |
 
 ## La fiabilité de lecture
 
@@ -27,124 +28,160 @@ directement en litige fournisseur. Trois garde-fous se cumulent.
 **Double lecture croisée.** Chaque page est envoyée en parallèle à deux moteurs
 Mistral différents — l'endpoint OCR documentaire et un modèle vision — avec le
 *même* schéma JSON strict, donc des sorties directement comparables champ à
-champ. Deux moteurs qui se trompent au même endroit de la même façon, c'est
-très improbable ; deux moteurs qui divergent, c'est un signal.
+champ. Deux moteurs qui se trompent au même endroit de la même façon, c'est très
+improbable ; deux moteurs qui divergent, c'est un signal.
 
 **Clé de contrôle ISBN.** Tout ISBN est validé par sa clé (EAN-13 ou ISBN-10,
-converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 — l'app le
-détecte même quand les deux moteurs lisent la même chose.
+converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 — détecté même
+quand les deux moteurs lisent la même chose.
 
-**Rien n'est deviné.** Là où un doute subsiste, l'app ne tranche jamais à votre
-place : elle affiche les deux lectures côte à côte, avec la photo de la page,
-et attend votre arbitrage. Le bouton de validation reste désactivé tant qu'il
-reste une ligne à vérifier.
+**Rien n'est deviné.** Là où un doute subsiste, l'app ne tranche jamais à la
+place de l'opérateur : elle affiche les deux lectures côte à côte, avec la photo
+de la page, et attend l'arbitrage. Le bouton de validation reste désactivé tant
+qu'il reste une ligne à vérifier.
 
-Le prompt impose par ailleurs aux modèles de renvoyer une valeur vide plutôt
-que de compléter de mémoire — un ISBN plausible mais inventé serait le pire des
-cas, puisqu'il passerait la clé de contrôle.
+Le prompt impose par ailleurs aux modèles de renvoyer une valeur vide plutôt que
+de compléter de mémoire — un ISBN plausible mais inventé serait le pire des cas,
+puisqu'il passerait la clé de contrôle.
+
+Si un seul des deux moteurs répond, la lecture n'est pas bloquée : elle est
+marquée dégradée, un bandeau l'annonce, et chaque ligne porte la mention
+« source unique » à vérifier.
+
+## Ce que le navigateur ne permet pas
+
+Trois limites de Safari sur iOS, connues et assumées :
+
+- **Aucun retour haptique.** `navigator.vibrate` n'existe pas sur iOS. La
+  confirmation repose sur le son et sur un **voile de couleur plein écran** —
+  vert pour un livre compté, ambre pour une décision à prendre — assez large
+  pour être perçu du coin de l'œil sans fixer l'écran.
+- **Aucun contrôle de la torche.** Safari n'expose pas la contrainte `torch` :
+  en entrepôt sombre, il faut passer par le centre de contrôle iOS.
+- **Aucun recadrage automatique.** Pas d'équivalent VisionKit : les photos
+  partent telles quelles. Mistral OCR est robuste à la perspective, mais une
+  page bien à plat se lit mieux.
 
 ## Les données
 
-Tout vit dans `Caches/CurrentCarton/` : le JSON de session et les pages JPEG.
-Le dossier est exclu des sauvegardes iCloud, recréé à l'ouverture d'un carton
-et **entièrement supprimé à la clôture**.
+Le carton en cours vit dans **IndexedDB**, sur l'appareil : l'état de la session
+d'un côté, les photos des pages de l'autre. Tout est supprimé à la clôture.
 
-La persistance sert uniquement à la reprise sur incident : si l'app est tuée au
-120ᵉ livre d'un carton de 200, elle propose de reprendre au relancement plutôt
-que de tout recommencer.
+La persistance sert uniquement à la reprise sur incident : si l'onglet est fermé
+au 120ᵉ livre d'un carton de 200, l'app repart où elle en était. Une lecture OCR
+interrompue, elle, ne peut pas reprendre — l'app revient à l'accueil plutôt que
+de rester sur un écran figé.
 
-L'export PDF + CSV est proposé au récapitulatif, avant la purge — c'est le seul
-moment où les données peuvent quitter l'appareil, et uniquement par votre geste
-via la feuille de partage iOS.
+L'export PDF + CSV est proposé au récapitulatif, avant la purge. Sur iOS il
+passe par la feuille de partage native (mail, Fichiers, Drive, AirDrop).
 
-La clé API Mistral est stockée dans le Trousseau iOS
-(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` : jamais sauvegardée, jamais
-migrée vers un autre appareil). Rien de secret n'est dans le code source.
+**La clé Mistral ne quitte jamais le serveur.** Le navigateur appelle
+`/api/ocr`, qui parle à Mistral avec la clé stockée en variable
+d'environnement Vercel.
 
-## Tester
-
-Le simulateur iOS ne fournit **aucune caméra virtuelle** : `AVCaptureDevice`
-n'y expose aucun périphérique et le scanner de documents VisionKit y est
-indisponible. C'est une limite du simulateur, pas de l'app.
-
-Deux replis permettent d'y dérouler malgré tout la quasi-totalité du flux :
-
-| Sur simulateur | Sur iPhone |
-|---|---|
-| Import des pages depuis la photothèque (glissez une photo de bon sur la fenêtre du simulateur) | Scanner de documents VisionKit |
-| Panneau d'injection : touchez un titre pour simuler son scan, ou saisissez un code arbitraire | Lecture caméra en continu |
-
-La lecture OCR, le contrôle du bon, la feuille de quantité, le récapitulatif et
-l'export fonctionnent normalement au simulateur — le réseau y est disponible.
-
-En complément, **Réglages → Charger un bon de démonstration** (versions Debug
-uniquement) injecte un bon fictif de 7 titres contenant une divergence de
-lecture, une clé ISBN cassée et une ligne à source unique : de quoi parcourir
-tout le parcours sans caméra, sans clé API et sans consommer d'appel Mistral.
-
-Restent à valider sur iPhone : l'ergonomie réelle de l'enchaînement des scans,
-la mise au point rapprochée et la qualité de lecture des bons photographiés.
-
-## Installation
-
-Prérequis : **Xcode 16+**, et un iPhone sous **iOS 17+** pour l'usage réel.
+## Déploiement
 
 ```bash
-open FrenchbookScan.xcodeproj
+npm install
+cp .env.example .env.local   # renseigner les trois variables
+npm run dev
 ```
 
-1. Onglet *Signing & Capabilities* → choisissez votre équipe de développement.
-   Changez `PRODUCT_BUNDLE_IDENTIFIER` si `com.frenchbook.scan` est déjà pris.
-2. Compilez sur simulateur pour parcourir l'interface, sur iPhone physique pour
-   l'usage réel.
-3. Au premier lancement : **Réglages** (roue crantée) → collez votre clé API
-   Mistral → *Tester la connexion*.
+Trois variables d'environnement, à définir en local puis dans Vercel
+(*Settings → Environment Variables*) :
 
-Le projet utilise les *synchronized file groups* d'Xcode 16 : les fichiers
-ajoutés dans `FrenchbookScan/` sont pris en compte automatiquement, sans
-manipulation du `.pbxproj`.
+| Variable | Rôle |
+|---|---|
+| `MISTRAL_API_KEY` | Clé API Mistral, côté serveur uniquement. |
+| `ACCESS_CODE` | Code partagé de l'équipe, demandé une fois par appareil. |
+| `AUTH_SECRET` | Secret de signature du cookie de session. |
+
+Générer le secret :
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Deux variables facultatives, `MISTRAL_OCR_MODEL` et `MISTRAL_VISION_MODEL`,
+permettent de changer de modèle sans toucher au code
+(`mistral-ocr-latest` et `mistral-medium-latest` par défaut).
+
+Le déploiement Vercel est standard : connecter le dépôt, aucune configuration
+de build particulière.
+
+### Sur le téléphone
+
+Ouvrir l'URL dans Safari, saisir le code d'accès, puis **Partager → Sur l'écran
+d'accueil**. L'app s'ouvre alors en plein écran, sans barre Safari.
+
+L'accès caméra exige HTTPS — Vercel le fournit. En développement local sur un
+téléphone, `http://` ne fonctionnera pas : passer par un tunnel HTTPS.
+
+## Accès
+
+Un code partagé unique, échangé contre un cookie signé HMAC valable un mois. Le
+cookie est `httpOnly` et ne contient que sa date d'expiration et sa signature :
+aucune session n'est stockée côté serveur.
+
+Le but n'est pas de protéger des données sensibles — elles vivent sur l'appareil
+de l'opérateur — mais d'empêcher qu'un inconnu tombant sur l'URL ne consomme le
+crédit Mistral.
 
 ## Choix techniques
 
-Aucune dépendance tierce. Tout ce dont l'app a besoin existe déjà dans le SDK
-iOS, et une dépendance de moins est une dépendance de moins à maintenir sur un
-outil de production.
-
-- **SwiftUI** + `ObservableObject`, une machine à états unique (`CartonCoordinator`).
-- **VisionKit** (`VNDocumentCameraViewController`) pour la capture du bon :
-  détection des bords et correction de perspective déjà éprouvées, et une
-  interface que les utilisateurs iOS connaissent.
-- **AVFoundation** (`AVCaptureMetadataOutput`) pour les codes-barres, plutôt que
-  `DataScannerViewController` qui exige une puce A12+. On garde en prime le
-  contrôle de la torche, de la mise au point rapprochée et de l'anti-rebond.
-- **Mistral** pour la seule tâche qui le nécessite : lire un tableau manuscrit
-  ou photocopié de travers. Le reste — clés de contrôle, rapprochement,
-  comptage, export — est du code local et déterministe.
+- **Next.js 16** (App Router) sur Vercel, **TypeScript**, **Tailwind CSS 4**.
+- **ZXing** (`@zxing/browser`) pour les codes-barres : Safari n'implémente pas
+  l'API `BarcodeDetector`. Les formats sont restreints aux symbologies du livre,
+  ce qui augmente le nombre d'images analysées par seconde.
+- **Zustand** + IndexedDB (`idb-keyval`) pour l'état du carton. `localStorage`
+  ne conviendrait pas : quotas trop bas pour un bon de deux cents lignes, et
+  écriture synchrone qui ferait tressauter l'écran de scan.
+- **jsPDF** pour le récapitulatif, chargé à la demande.
+- **Web Audio** pour les bips, avec des timbres distincts entre succès,
+  attention et échec.
 
 ## Organisation
 
 ```
-FrenchbookScan/
-├── App/           FrenchbookScanApp, RootView, CartonCoordinator
-├── Models/        ISBN, OrderLine, CartonSession
-├── Services/      MistralClient, OCRPipeline, Reconciler,
-│                  SessionStore, Exporter, Keychain, AppSettings, Feedback
-├── Features/
-│   ├── Home/      Écran d'attente
-│   ├── Capture/   Scanner de documents, écran de lecture
-│   ├── Review/    Contrôle du bon, arbitrage ligne par ligne
-│   ├── Scan/      Caméra, feuille de quantité, checklist
-│   ├── Summary/   Récapitulatif et clôture
-│   └── Settings/  Clé API, modèles, préférences
-└── DesignSystem/  Thème et styles de boutons
+src/
+├── app/
+│   ├── page.tsx            Point d'entrée
+│   └── api/
+│       ├── ocr/            Double lecture Mistral (serveur)
+│       └── session/        Code d'accès et cookie signé
+├── server/                 Modules jamais envoyés au navigateur
+│   ├── mistral.ts
+│   └── auth.ts
+├── lib/
+│   ├── isbn.ts             Normalisation et clés de contrôle
+│   ├── reconciler.ts       Croisement des deux lectures
+│   ├── order.ts            Calculs d'écarts
+│   ├── store.ts            État du carton (Zustand + IndexedDB)
+│   ├── export.ts           PDF et CSV
+│   ├── useBarcodeScanner.ts
+│   ├── feedback.ts         Bips
+│   ├── images.ts           Redimensionnement avant envoi
+│   └── pages.ts            Photos des pages
+└── components/             Un composant par phase
 ```
 
-## Réglages notables
+## Tester sans matériel
 
-**Double lecture croisée** — activée par défaut. La désactiver divise par deux
-le coût d'appel API mais supprime la comparaison entre moteurs : seule la clé
-ISBN reste vérifiée. L'app affiche un avertissement explicite dans ce mode.
+**Réglages → Charger un bon de démonstration** (hors production) injecte un bon
+fictif de 7 titres contenant une divergence de lecture, une clé ISBN cassée et
+une ligne à source unique. De quoi parcourir tout le flux sans photo ni appel
+Mistral.
 
-**Modèles** — `mistral-ocr-latest` et `mistral-medium-latest` par défaut,
-modifiables dans les Réglages si Mistral publie de nouveaux identifiants, sans
-recompiler.
+La logique métier — clés ISBN, rapprochement, consolidation — est couverte par
+des assertions vérifiées : conversion ISBN-10 → 13, détection d'un chiffre faux
+malgré l'accord des deux moteurs, divergence de quantité, ligne manquée par un
+moteur, fusion des doublons.
+
+## Limites connues
+
+- Le corps d'une requête serverless Vercel est plafonné à quelques mégaoctets :
+  les photos sont réduites à 2000 px et compressées avant envoi.
+- Une page très dense peut approcher la limite de durée d'une fonction Vercel
+  (`maxDuration` est fixé à 60 s). L'app envoie **une page par requête**, ce qui
+  garde chaque appel court même sur un bon de trente pages.
+- L'app nécessite le réseau à chaque phase : il n'y a pas de service worker.

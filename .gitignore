@@ -1,19 +1,21 @@
-# Xcode
+node_modules/
+.pnp
+.pnp.*
+
+.next/
+out/
 build/
-DerivedData/
-*.xcuserstate
-*.xcscmblueprint
-*.xccheckout
-xcuserdata/
-*.moved-aside
-*.hmap
-*.ipa
-*.dSYM.zip
-*.dSYM
+dist/
 
-# Swift Package Manager
-.build/
-.swiftpm/
+.env
+.env.local
+.env*.local
 
-# macOS
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel/
+
+npm-debug.log*
+yarn-error.log*
 .DS_Store
