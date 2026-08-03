@@ -9,6 +9,7 @@ struct ScanChecklistView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var search = ""
+    @State private var editingLine: OrderLine?
 
     var body: some View {
         NavigationStack {
@@ -16,16 +17,22 @@ struct ScanChecklistView: View {
                 if !remaining.isEmpty {
                     Section("Restant à trouver — \(remaining.count)") {
                         ForEach(remaining) { line in
-                            ChecklistRow(line: line)
+                            Button { editingLine = line } label: { ChecklistRow(line: line) }
+                                .buttonStyle(.plain)
                         }
                     }
                 }
 
                 if !done.isEmpty {
-                    Section("Comptés — \(done.count)") {
+                    Section {
                         ForEach(done) { line in
-                            ChecklistRow(line: line)
+                            Button { editingLine = line } label: { ChecklistRow(line: line) }
+                                .buttonStyle(.plain)
                         }
+                    } header: {
+                        Text("Comptés — \(done.count)")
+                    } footer: {
+                        Text("Touchez un titre pour corriger sa quantité ou signaler un exemplaire abîmé.")
                     }
                 }
 
@@ -47,6 +54,15 @@ struct ScanChecklistView: View {
                         }
                     }
                 }
+            }
+            .sheet(item: $editingLine) { line in
+                QuantitySheet(line: line, context: .correction) { counted, damaged in
+                    coordinator.setCount(counted, damaged: damaged, for: line.id)
+                    editingLine = nil
+                } onCancel: {
+                    editingLine = nil
+                }
+                .presentationDetents([.medium, .large])
             }
             .searchable(text: $search, prompt: "Titre, auteur ou ISBN")
             .navigationTitle("Avancement")

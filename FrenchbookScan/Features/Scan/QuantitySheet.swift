@@ -6,7 +6,17 @@ import SwiftUI
 /// c'est le cas courant. Corriger demande un geste de plus, volontairement,
 /// car c'est une décision qui apparaîtra au récapitulatif.
 struct QuantitySheet: View {
+
+    /// D'où vient l'ouverture de la feuille : la quantité proposée par défaut
+    /// n'est pas la même selon qu'un livre vient d'être scanné ou que
+    /// l'opérateur revient corriger une ligne depuis la liste.
+    enum Context {
+        case scan
+        case correction
+    }
+
     let line: OrderLine
+    let context: Context
     let onConfirm: (Int, Int) -> Void
     let onCancel: () -> Void
 
@@ -16,14 +26,27 @@ struct QuantitySheet: View {
     @State private var damaged: Int = 0
     @State private var isAdjusting = false
 
-    init(line: OrderLine, onConfirm: @escaping (Int, Int) -> Void, onCancel: @escaping () -> Void) {
+    init(
+        line: OrderLine,
+        context: Context = .scan,
+        onConfirm: @escaping (Int, Int) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
         self.line = line
+        self.context = context
         self.onConfirm = onConfirm
         self.onCancel = onCancel
-        // Cas courant : on propose la quantité annoncée au bon. Si la ligne est
-        // déjà soldée, c'est qu'un exemplaire de plus vient d'être scanné :
-        // on propose le compte actuel + 1 plutôt que de repartir de zéro.
-        _count = State(initialValue: line.isComplete ? line.counted + 1 : line.expected)
+
+        switch context {
+        case .scan:
+            // On propose la quantité annoncée au bon. Si la ligne est déjà
+            // soldée, c'est qu'un exemplaire de plus vient d'être scanné :
+            // on propose le compte actuel + 1.
+            _count = State(initialValue: line.isComplete ? line.counted + 1 : line.expected)
+        case .correction:
+            // On repart de ce qui a été compté, sans rien supposer.
+            _count = State(initialValue: line.counted)
+        }
         _damaged = State(initialValue: line.damaged)
     }
 
@@ -51,7 +74,12 @@ struct QuantitySheet: View {
 
                     damagedControl
 
-                    if line.isComplete {
+                    if context == .correction {
+                        notice(
+                            "Correction manuelle : \(line.counted) exemplaire(s) déjà compté(s) pour ce titre.",
+                            color: .secondary
+                        )
+                    } else if line.isComplete {
                         notice(
                             "Ce titre était déjà complet (\(line.counted)/\(line.expected)). Toute quantité supplémentaire sera signalée en surplus.",
                             color: Theme.warning
@@ -180,16 +208,19 @@ struct QuantitySheet: View {
         .cardStyle()
     }
 
+    private var confirmLabel: String {
+        if context == .correction { return "Enregistrer \(count) exemplaire(s)" }
+        if count == line.expected && count > 1 { return "Les \(count) sont là" }
+        return "Valider \(count) exemplaire(s)"
+    }
+
     private var actions: some View {
         VStack(spacing: 10) {
             Button {
                 Feedback.success(sound: settings.soundEnabled)
                 onConfirm(count, damaged)
             } label: {
-                Label(
-                    count == line.expected ? "Les \(count) sont là" : "Valider \(count) exemplaire(s)",
-                    systemImage: "checkmark"
-                )
+                Label(confirmLabel, systemImage: "checkmark")
             }
             .buttonStyle(PrimaryButtonStyle(tint: accentColor))
 
