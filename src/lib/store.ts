@@ -8,6 +8,7 @@ import { consolidate, mergeNotDelivered, reconcile } from "./reconciler";
 import { prepareForUpload } from "./images";
 import { clearPages, savePage } from "./pages";
 import { normalizeIsbn } from "./isbn";
+import { migrateSession, toExtractedPage } from "./payload";
 import { expected, findExtraIndex, findLineIndex, isComplete, isReviewComplete } from "./order";
 import { emptySession } from "./types";
 import type {
@@ -82,28 +83,69 @@ const idbStorage = {
   },
 };
 
-async function readPage(
-  dataUrl: string,
-  doubleCheck: boolean,
-): Promise<OcrPageResponse> {
-  const response = await fetch("/api/ocr", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: dataUrl, doubleCheck }),
-  });
-
-  const payload = (await response.json()) as Partial<OcrPageResponse> & { error?: string };
-  if (!response.ok) {
-    throw new Error(payload.error ?? `Lecture impossible (${response.status}).`);
+/** Erreur de lecture, distinguant ce qui mérite une seconde tentative. */
+class ReadError extends Error {
+  constructor(
+    message: string,
+    readonly transient: boolean,
+  ) {
+    super(message);
+    this.name = "ReadError";
   }
-  if (!payload.engineA) {
-    throw new Error("Le moteur n'a détecté aucune ligne sur cette page.");
+}
+
+/**
+ * Une page perdue, c'est deux appels OCR déjà payés et une attente à
+ * recommencer. Sur un incident passager — coupure de wifi d'entrepôt, 502 de
+ * passage, quota momentané — on retente une fois avant d'abandonner le carton.
+ */
+async function readPage(dataUrl: string, doubleCheck: boolean): Promise<OcrPageResponse> {
+  try {
+    return await readPageOnce(dataUrl, doubleCheck);
+  } catch (error) {
+    if (!(error instanceof ReadError) || !error.transient) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return readPageOnce(dataUrl, doubleCheck);
+  }
+}
+
+async function readPageOnce(dataUrl: string, doubleCheck: boolean): Promise<OcrPageResponse> {
+  let response: Response;
+  try {
+    response = await fetch("/api/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl, doubleCheck }),
+    });
+  } catch {
+    throw new ReadError("Réseau indisponible. Vérifiez la connexion de l’appareil.", true);
+  }
+
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (!response.ok) {
+    const message = payload && typeof payload.error === "string" ? payload.error : null;
+    throw new ReadError(
+      message ?? `Lecture impossible (${response.status}).`,
+      response.status >= 500 || response.status === 429,
+    );
+  }
+  if (!payload || typeof payload.engineA !== "object" || payload.engineA === null) {
+    throw new Error("Réponse illisible du serveur. Rechargez la page et réessayez.");
+  }
+
+  const engineA = toExtractedPage(payload.engineA);
+  if (engineA.lines.length === 0) {
+    throw new Error("Aucune ligne de livre n'a été détectée sur cette page.");
   }
 
   return {
-    engineA: payload.engineA,
-    engineB: payload.engineB ?? null,
-    degraded: payload.degraded ?? false,
+    engineA,
+    engineB:
+      payload.engineB && typeof payload.engineB === "object"
+        ? toExtractedPage(payload.engineB)
+        : null,
+    degraded: payload.degraded === true,
   };
 }
 
@@ -368,6 +410,20 @@ export const useCarton = create<CartonState>()(
     {
       name: "frenchbook-carton",
       storage: createJSONStorage(() => idbStorage),
+      /**
+       * Incrémenté à chaque changement de forme de `CartonSession`. Sans cela,
+       * un carton entamé sur une version précédente serait relu avec des champs
+       * manquants — et l'opérateur perdrait son comptage en cours sur une
+       * erreur incompréhensible.
+       */
+      version: 2,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Record<string, unknown>;
+        return {
+          ...(state as unknown as CartonState),
+          session: migrateSession(state.session),
+        };
+      },
       partialize: (state) => ({
         phase: state.phase,
         session: state.session,

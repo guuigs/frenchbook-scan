@@ -30,8 +30,13 @@ export function needsReview(line: OrderLine): boolean {
   return line.issues.length > 0;
 }
 
+/**
+ * Tolérant à une ligne relue d'un cache écrit par une version antérieure : un
+ * champ absent doit dégrader l'affichage, jamais faire tomber tout l'écran de
+ * scan au milieu d'un carton.
+ */
 export function displayPublisher(line: OrderLine): string {
-  return line.publisher.trim() || "Éditeur inconnu";
+  return (line.publisher ?? "").trim() || "Éditeur inconnu";
 }
 
 export function pendingLines(session: CartonSession): OrderLine[] {
@@ -129,5 +134,5 @@ export function declaredQuantityGap(session: CartonSession): number | null {
 }
 
 export function sessionTitle(session: CartonSession): string {
-  return session.supplier.trim() || "Carton en cours";
+  return (session.supplier ?? "").trim() || "Carton en cours";
 }
