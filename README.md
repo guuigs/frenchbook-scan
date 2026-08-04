@@ -127,9 +127,38 @@ Le but n'est pas de protéger des données sensibles — elles vivent sur l'appa
 de l'opérateur — mais d'empêcher qu'un inconnu tombant sur l'URL ne consomme le
 crédit Mistral.
 
+## Interface
+
+L'interface suit le design system **Geist** de Vercel : police Geist Sans et
+Geist Mono, surfaces plates séparées par un trait de 1 px plutôt que par des
+ombres, un seul bouton plein par écran, aucune décoration. Les couleurs d'état
+— vert, ambre, rouge — ne servent qu'à signaler une anomalie. Les thèmes clair
+et sombre suivent le réglage du système.
+
+Tous les nombres sont en chasse fixe et en chiffres tabulaires : sur un écran de
+comptage, `12/20` doit rester aligné d'une ligne à l'autre.
+
+Le code est revu contre les [Web Interface Guidelines de Vercel][wig],
+installées comme skill d'agent dans `.agents/skills/` :
+
+```bash
+npx skills add vercel-labs/agent-skills --skill web-design-guidelines
+```
+
+Ce qu'elles ont corrigé ici : blocage du zoom retiré du viewport,
+`touch-action: manipulation` pour supprimer le délai du double-tap sans
+désactiver le zoom, anneaux de focus clavier, libellés et `aria-label` sur les
+champs et boutons-icônes, dimensions explicites sur les images,
+`content-visibility` sur les listes longues, `translate="no"` sur les ISBN, et
+fond de scène des dialogues rendu atteignable au clavier.
+
+[wig]: https://github.com/vercel-labs/web-interface-guidelines
+
 ## Choix techniques
 
 - **Next.js 16** (App Router) sur Vercel, **TypeScript**, **Tailwind CSS 4**.
+- **Geist** pour la typographie, chargée via `next/font` (aucun décalage de mise
+  en page au chargement).
 - **ZXing** (`@zxing/browser`) pour les codes-barres : Safari n'implémente pas
   l'API `BarcodeDetector`. Les formats sont restreints aux symbologies du livre,
   ce qui augmente le nombre d'images analysées par seconde.
@@ -167,10 +196,11 @@ src/
 
 ## Tester sans matériel
 
-**Réglages → Charger un bon de démonstration** (hors production) injecte un bon
-fictif de 7 titres contenant une divergence de lecture, une clé ISBN cassée et
-une ligne à source unique. De quoi parcourir tout le flux sans photo ni appel
-Mistral.
+Avec `NEXT_PUBLIC_ENABLE_DEMO=1`, **Réglages → Charger un bon de démonstration**
+injecte un bon fictif de 7 titres contenant une divergence de lecture, une clé
+ISBN cassée et une ligne à source unique. De quoi parcourir tout le flux sans
+photo ni appel Mistral. À activer en local et sur les préversions, jamais en
+production.
 
 La logique métier — clés ISBN, rapprochement, consolidation — est couverte par
 des assertions vérifiées : conversion ISBN-10 → 13, détection d'un chiffre faux

@@ -6,15 +6,16 @@ import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
 import { displayAuthor, isReviewComplete, needsReview, totalExpected } from "@/lib/order";
 import { ISSUE_LABELS, type OrderLine } from "@/lib/types";
-import { ActionBar, Banner, Button, Chip, SectionTitle } from "./ui";
+import { ActionBar, Button, Dialog, Label, Note, Tag } from "./ui";
+import { IconAlert, IconCheck, IconChevronRight, IconPlus } from "./icons";
 import { LineEditor } from "./LineEditor";
 
 /**
  * Contrôle du bon de commande lu.
  *
- * Le tri est délibéré : les lignes à vérifier remontent en tête. L'opérateur
- * travaille de haut en bas jusqu'à ce que le bandeau passe au vert, sans avoir
- * à relire les lignes que les deux moteurs ont lues à l'identique.
+ * Les lignes à vérifier remontent en tête : l'opérateur descend jusqu'à ce que
+ * le compteur tombe à zéro, sans relire ce que les deux moteurs ont lu à
+ * l'identique.
  */
 export function OrderReview() {
   const session = useCarton((state) => state.session);
@@ -26,7 +27,7 @@ export function OrderReview() {
   const abandonCarton = useCarton((state) => state.abandonCarton);
 
   const [editing, setEditing] = useState<OrderLine | null>(null);
-  const [confirmingValidation, setConfirmingValidation] = useState(false);
+  const [dialog, setDialog] = useState<"validate" | "abandon" | null>(null);
 
   const { pending, confirmed } = useMemo(
     () => ({
@@ -40,86 +41,64 @@ export function OrderReview() {
 
   return (
     <main className="flex min-h-dvh flex-col">
-      <header className="pt-safe flex items-center justify-between px-4 pb-2">
+      <header className="pt-safe flex items-center justify-between px-4 pb-4">
         <button
           type="button"
-          onClick={() => {
-            if (confirm("Abandonner ce carton ? Le bon lu et ses photos seront supprimés.")) {
-              void abandonCarton();
-            }
-          }}
-          className="text-sm font-semibold text-red-600"
+          onClick={() => setDialog("abandon")}
+          className="text-[14px] text-muted hover:text-danger"
         >
           Abandonner
         </button>
-        <h1 className="font-semibold">Bon de commande</h1>
+        <h1 className="text-[15px] font-medium">Bon de commande</h1>
         <button
           type="button"
           onClick={() => setEditing(addManualLine())}
-          aria-label="Ajouter une ligne manquante"
-          className="text-xl font-semibold text-blue-600"
+          aria-label="Ajouter une ligne"
+          className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-border text-muted hover:text-foreground active:bg-subtle"
         >
-          +
+          <IconPlus />
         </button>
       </header>
 
-      <div className="flex-1 space-y-5 px-4 pb-6">
-        <Banner
-          tone={clean ? "ok" : "warning"}
-          title={clean ? "Lecture vérifiée" : `${pending.length} ligne(s) à vérifier`}
-        >
-          {clean
-            ? "Toutes les lignes concordent entre les deux lectures."
-            : "Les deux lectures divergent ou une clé ISBN est invalide."}
-        </Banner>
-
-        {degraded ? (
-          <Banner tone="warning" title="Vérification croisée dégradée">
-            Un seul moteur a répondu sur au moins une page. Ces lignes sont marquées « source
-            unique » : contrôlez-les sur la photo avec attention.
-          </Banner>
-        ) : null}
+      <div className="flex-1 space-y-4 px-4 pb-6">
+        {degraded ? <Note tone="warning">Un seul moteur a répondu sur certaines pages.</Note> : null}
 
         {pending.length > 0 ? (
           <section>
-            <SectionTitle>À vérifier — {pending.length}</SectionTitle>
-            <div className="space-y-2">
+            <Label>À vérifier · {pending.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
               {pending.map((line) => (
                 <LineRow key={line.id} line={line} onSelect={() => setEditing(line)} />
               ))}
-            </div>
-            <p className="px-1 pt-2 text-xs text-slate-500">
-              Touchez une ligne pour trancher entre les deux lectures ou corriger la valeur.
-            </p>
+            </ul>
           </section>
         ) : null}
 
         {confirmed.length > 0 ? (
           <section>
-            <SectionTitle>Lecture concordante — {confirmed.length}</SectionTitle>
-            <div className="space-y-2">
+            <Label>Vérifiées · {confirmed.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
               {confirmed.map((line) => (
                 <LineRow key={line.id} line={line} onSelect={() => setEditing(line)} />
               ))}
-            </div>
+            </ul>
           </section>
         ) : null}
       </div>
 
       <ActionBar>
-        <div className="flex gap-3 pb-2 text-xs text-slate-500">
+        <div className="flex items-center justify-between pb-2.5 font-mono text-[12px] text-muted tabular-nums">
           <span>
-            <strong className="text-slate-900 tabular-nums">{session.lines.length}</strong> titres
+            {session.lines.length} titres · {totalExpected(session)} exemplaires
           </span>
-          <span>
-            <strong className="text-slate-900 tabular-nums">{totalExpected(session)}</strong>{" "}
-            exemplaires
+          <span className={clean ? "text-success" : "text-warning"}>
+            {clean ? "vérifié" : `${pending.length} à vérifier`}
           </span>
         </div>
-        <Button disabled={!clean || session.lines.length === 0} onClick={() => setConfirmingValidation(true)}>
-          Valider et passer au scan
+        <Button disabled={!clean || session.lines.length === 0} onClick={() => setDialog("validate")}>
+          Passer au scan
         </Button>
-        <div className="h-2" />
+        <div className="h-3" />
       </ActionBar>
 
       {editing ? (
@@ -137,16 +116,39 @@ export function OrderReview() {
         />
       ) : null}
 
-      {confirmingValidation ? (
-        <ConfirmValidation
-          titles={session.lines.length}
-          copies={totalExpected(session)}
-          onCancel={() => setConfirmingValidation(false)}
-          onConfirm={() => {
-            setConfirmingValidation(false);
-            validateOrder();
-          }}
-        />
+      {dialog === "validate" ? (
+        <Dialog
+          title="Passer au scan ?"
+          body={`${session.lines.length} titres, ${totalExpected(session)} exemplaires attendus.`}
+          onDismiss={() => setDialog(null)}
+        >
+          <Button
+            onClick={() => {
+              setDialog(null);
+              validateOrder();
+            }}
+          >
+            Commencer le scan
+          </Button>
+          <Button variant="secondary" onClick={() => setDialog(null)}>
+            Revoir
+          </Button>
+        </Dialog>
+      ) : null}
+
+      {dialog === "abandon" ? (
+        <Dialog
+          title="Abandonner ce carton ?"
+          body="Le bon lu et ses photos seront supprimés."
+          onDismiss={() => setDialog(null)}
+        >
+          <Button variant="danger" onClick={() => void abandonCarton()}>
+            Abandonner
+          </Button>
+          <Button variant="secondary" onClick={() => setDialog(null)}>
+            Continuer
+          </Button>
+        </Dialog>
       ) : null}
     </main>
   );
@@ -154,70 +156,42 @@ export function OrderReview() {
 
 function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) {
   const kinds = Array.from(new Set(line.issues.map((issue) => issue.kind)));
+  const flagged = line.issues.length > 0;
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex w-full items-start gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50"
-    >
-      <span className={`mt-0.5 text-lg ${line.issues.length ? "text-amber-500" : "text-emerald-600"}`}>
-        {line.issues.length ? "⚠" : "✓"}
-      </span>
+    <li className="deferred-row border-b border-border last:border-0">
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex w-full items-start gap-3 bg-panel px-4 py-3 text-left hover:bg-subtle active:bg-subtle"
+      >
+        <span className={`mt-0.5 shrink-0 ${flagged ? "text-warning" : "text-success"}`}>
+          {flagged ? <IconAlert /> : <IconCheck />}
+        </span>
 
-      <span className="min-w-0 flex-1">
-        <span className={`block font-medium ${line.title ? "" : "text-red-600"}`}>
-          {line.title || "Titre manquant"}
-        </span>
-        <span className="block truncate text-sm text-slate-500">{displayAuthor(line)}</span>
-        <span className="mt-1 block text-xs text-slate-500">
-          <span className={`font-mono ${line.isbn ? "" : "text-red-600"}`}>
-            {line.isbn ? formatIsbn(line.isbn) : "ISBN manquant"}
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[14px] font-medium ${line.title ? "" : "text-danger"}`}>
+            {line.title || "Titre manquant"}
           </span>
-          <span className="tabular-nums">
-            {" · "}cdé {line.quantityOrdered} · livré {line.quantityDelivered}
-          </span>
-        </span>
-        {kinds.length > 0 ? (
-          <span className="mt-2 flex flex-wrap gap-1.5">
+          <span className="block truncate text-[13px] text-muted">{displayAuthor(line)}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              className={`font-mono text-[11px] tabular-nums ${line.isbn ? "text-faint" : "text-danger"}`}
+              translate="no"
+            >
+              {line.isbn ? formatIsbn(line.isbn) : "ISBN manquant"}
+            </span>
+            <span className="font-mono text-[11px] text-faint tabular-nums">
+              {line.quantityOrdered}→{line.quantityDelivered}
+            </span>
             {kinds.map((kind) => (
-              <Chip key={kind}>{ISSUE_LABELS[kind]}</Chip>
+              <Tag key={kind}>{ISSUE_LABELS[kind]}</Tag>
             ))}
           </span>
-        ) : null}
-      </span>
+        </span>
 
-      <span className="mt-1 text-slate-300">›</span>
-    </button>
-  );
-}
-
-function ConfirmValidation({
-  titles,
-  copies,
-  onCancel,
-  onConfirm,
-}: {
-  titles: number;
-  copies: number;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-        <h2 className="text-lg font-semibold">Valider le bon de commande ?</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          {titles} titre(s), {copies} exemplaire(s) attendus. Vous passez au comptage physique.
-        </p>
-        <div className="mt-5 space-y-2">
-          <Button onClick={onConfirm}>Valider et scanner les livres</Button>
-          <Button tone="secondary" onClick={onCancel}>
-            Revoir
-          </Button>
-        </div>
-      </div>
-    </div>
+        <IconChevronRight className="mt-1 h-4 w-4 shrink-0 text-faint" />
+      </button>
+    </li>
   );
 }

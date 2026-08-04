@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { isValidIsbn, normalizeIsbn } from "@/lib/isbn";
 import { loadPage } from "@/lib/pages";
 import type { FieldIssue, LineField, OrderLine } from "@/lib/types";
-import { Button, Sheet } from "./ui";
+import { Button, Input, Sheet } from "./ui";
+import { IconClose, IconMinus, IconPlus } from "./icons";
 
 /**
  * Arbitrage d'une ligne douteuse.
  *
- * L'opérateur voit la photo de la page au-dessus du formulaire : trancher entre
- * deux lectures sans pouvoir consulter l'original ne serait qu'un tirage au
- * sort. Quand les moteurs divergent, les deux valeurs sont proposées en un
- * geste ; sinon le champ reste librement modifiable.
+ * La photo de la page est au-dessus du formulaire : trancher entre deux
+ * lectures sans pouvoir consulter l'original ne serait qu'un tirage au sort.
  */
 export function LineEditor({
   line,
@@ -26,6 +25,7 @@ export function LineEditor({
   onCancel: () => void;
   onDelete: () => void;
 }) {
+  const ids = useId();
   const [isbn, setIsbn] = useState(line.isbn);
   const [title, setTitle] = useState(line.title);
   const [author, setAuthor] = useState(line.author);
@@ -47,158 +47,147 @@ export function LineEditor({
   const conflict = (field: LineField): FieldIssue | undefined =>
     line.issues.find((issue) => issue.field === field && issue.kind === "conflict");
 
-  const singleSource = (field: LineField): FieldIssue | undefined =>
-    line.issues.find((issue) => issue.field === field && issue.kind === "singleSource");
-
-  const canSave = title.trim().length > 0 && isValidIsbn(isbn) && (ordered > 0 || delivered > 0);
-
-  const save = () =>
-    onSave({
-      ...line,
-      isbn: normalizeIsbn(isbn),
-      title: title.trim(),
-      author: author.trim(),
-      quantityOrdered: ordered,
-      quantityDelivered: delivered,
-    });
+  const isbnValid = isValidIsbn(isbn);
+  const canSave = title.trim().length > 0 && isbnValid && (ordered > 0 || delivered > 0);
 
   const candidates = (field: LineField, apply: (value: string) => void) => {
     const issue = conflict(field);
-    if (issue) {
-      return (
-        <div className="mt-2">
-          <p className="mb-1.5 text-xs text-slate-500">Les deux lectures diffèrent :</p>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              ["Lecture 1", issue.candidateA],
-              ["Lecture 2", issue.candidateB],
-            ].map(([label, value]) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => apply(value)}
-                className="rounded-xl bg-slate-100 p-2.5 text-left active:bg-slate-200"
-              >
-                <span className="block text-[11px] text-slate-500">{label}</span>
-                <span className="block text-sm font-medium break-words">{value || "(vide)"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    const single = singleSource(field);
-    if (single) {
-      return (
-        <p className="mt-2 text-xs text-amber-700">
-          Ligne vue par une seule lecture — confirmez-la sur la photo.
-        </p>
-      );
-    }
-    return null;
+    if (!issue) return null;
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {[issue.candidateA, issue.candidateB].map((value, index) => (
+          <button
+            key={index}
+            type="button"
+            onClick={() => apply(value)}
+            className="rounded-[8px] border border-border bg-panel px-2.5 py-2 text-left hover:border-border-strong active:bg-subtle"
+          >
+            <span className="block font-mono text-[10px] text-faint">Lecture {index + 1}</span>
+            <span className="block text-[13px] break-words">{value || "(vide)"}</span>
+          </button>
+        ))}
+      </div>
+    );
   };
 
   return (
     <>
       <Sheet
         open
-        title={<h2 className="text-lg font-semibold">Vérifier la ligne</h2>}
+        header={<h2 className="text-[15px] font-medium">Vérifier la ligne</h2>}
         footer={
-          <div className="space-y-2 pb-2">
-            <Button disabled={!canSave} tone="success" onClick={save}>
-              Confirmer cette ligne
+          <div className="space-y-2 pb-3">
+            <Button disabled={!canSave} onClick={() =>
+              onSave({
+                ...line,
+                isbn: normalizeIsbn(isbn),
+                title: title.trim(),
+                author: author.trim(),
+                quantityOrdered: ordered,
+                quantityDelivered: delivered,
+              })
+            }>
+              Confirmer
             </Button>
-            <div className="flex gap-2">
-              <Button tone="secondary" onClick={onCancel}>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={onCancel}>
                 Annuler
               </Button>
-              <Button
-                tone="danger"
-                onClick={() => {
-                  if (confirm("Supprimer cette ligne du bon de commande ?")) onDelete();
-                }}
-              >
+              <Button variant="secondaryDanger" onClick={onDelete}>
                 Supprimer
               </Button>
             </div>
           </div>
         }
       >
-        <div className="space-y-5">
+        <div className="space-y-4">
           {page ? (
-            <button type="button" onClick={() => setZoomed(true)} className="block w-full">
+            <button
+              type="button"
+              onClick={() => setZoomed(true)}
+              aria-label="Agrandir la page du bon"
+              className="block w-full"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={page}
-                alt={`Page ${line.pageIndex + 1} du bon`}
-                className="max-h-56 w-full rounded-xl border border-slate-200 bg-white object-contain"
+                alt={`Page ${line.pageIndex + 1} du bon de commande`}
+                width={800}
+                height={560}
+                className="max-h-48 w-full rounded-[8px] border border-border bg-subtle object-contain"
               />
-              <span className="mt-1 block text-xs text-slate-500">
-                Page {line.pageIndex + 1} — touchez pour agrandir et zoomer
-              </span>
             </button>
           ) : null}
 
-          <Field label="ISBN">
-            <input
+          <div>
+            <label htmlFor={`${ids}-isbn`} className="mb-1.5 block text-[13px] text-muted">
+              ISBN
+            </label>
+            <Input
+              id={`${ids}-isbn`}
               value={isbn}
               onChange={(event) => setIsbn(event.target.value)}
               inputMode="numeric"
               autoComplete="off"
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono outline-none focus:border-blue-500"
+              spellCheck={false}
+              translate="no"
+              placeholder="9782070368228"
+              className="font-mono"
             />
-            {isbn.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-500">Saisissez l&apos;ISBN relevé sur le bon.</p>
-            ) : isValidIsbn(isbn) ? (
-              <p className="mt-2 text-xs font-medium text-emerald-700">✓ Clé de contrôle valide.</p>
-            ) : (
-              <p className="mt-2 text-xs font-medium text-red-600">
-                ✕ Clé de contrôle invalide — au moins un chiffre est erroné.
+            {isbn ? (
+              <p
+                className={`mt-1.5 font-mono text-[11px] ${isbnValid ? "text-success" : "text-danger"}`}
+                aria-live="polite"
+              >
+                {isbnValid ? "clé valide" : "clé invalide"}
               </p>
-            )}
+            ) : null}
             {candidates("isbn", (value) => setIsbn(normalizeIsbn(value)))}
-          </Field>
+          </div>
 
-          <Field label="Titre">
-            <input
+          <div>
+            <label htmlFor={`${ids}-title`} className="mb-1.5 block text-[13px] text-muted">
+              Titre
+            </label>
+            <Input
+              id={`${ids}-title`}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-blue-500"
+              autoComplete="off"
             />
             {candidates("title", setTitle)}
-          </Field>
+          </div>
 
-          <Field label="Auteur">
-            <input
+          <div>
+            <label htmlFor={`${ids}-author`} className="mb-1.5 block text-[13px] text-muted">
+              Auteur
+            </label>
+            <Input
+              id={`${ids}-author`}
               value={author}
               onChange={(event) => setAuthor(event.target.value)}
-              className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-blue-500"
+              autoComplete="off"
             />
             {candidates("author", setAuthor)}
-          </Field>
+          </div>
 
-          <Field label="Quantité commandée">
-            <Stepper value={ordered} onChange={setOrdered} />
-            {candidates("quantityOrdered", (value) => setOrdered(Number(value.replace(/\D/g, "")) || 0))}
-          </Field>
-
-          <Field label="Quantité livrée">
-            <Stepper value={delivered} onChange={setDelivered} />
-            {candidates("quantityDelivered", (value) =>
-              setDelivered(Number(value.replace(/\D/g, "")) || 0),
-            )}
-            <p className="mt-2 text-xs text-slate-500">
-              {delivered < ordered
-                ? `Reliquat de ${ordered - delivered} exemplaire(s) : le scan attendra ${delivered} exemplaire(s).`
-                : `Le scan comptera ${Math.max(delivered, ordered)} exemplaire(s) pour ce titre.`}
-            </p>
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="mb-1.5 text-[13px] text-muted">Commandé</p>
+              <Stepper label="commandée" value={ordered} onChange={setOrdered} />
+              {candidates("quantityOrdered", (v) => setOrdered(Number(v.replace(/\D/g, "")) || 0))}
+            </div>
+            <div>
+              <p className="mb-1.5 text-[13px] text-muted">Livré</p>
+              <Stepper label="livrée" value={delivered} onChange={setDelivered} />
+              {candidates("quantityDelivered", (v) => setDelivered(Number(v.replace(/\D/g, "")) || 0))}
+            </div>
+          </div>
         </div>
       </Sheet>
 
       {zoomed && page ? (
-        <div className="fixed inset-0 z-60 bg-black" onClick={() => setZoomed(false)}>
+        <div className="fixed inset-0 z-60 bg-black">
           <div className="h-full w-full overflow-auto">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={page} alt="Page du bon agrandie" className="min-h-full w-auto max-w-none" />
@@ -206,9 +195,10 @@ export function LineEditor({
           <button
             type="button"
             onClick={() => setZoomed(false)}
-            className="pt-safe absolute top-2 right-4 rounded-full bg-white/90 px-4 py-2 font-semibold"
+            aria-label="Fermer"
+            className="pt-safe absolute top-2 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black"
           >
-            Fermer
+            <IconClose />
           </button>
         </div>
       ) : null}
@@ -216,32 +206,35 @@ export function LineEditor({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Stepper({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-600">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function Stepper({ value, onChange }: { value: number; onChange: (next: number) => void }) {
-  return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => onChange(Math.max(value - 1, 0))}
-        className="h-12 w-12 rounded-xl bg-white text-xl font-semibold shadow-sm active:bg-slate-100"
+        aria-label={`Diminuer la quantité ${label}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
       >
-        −
+        <IconMinus />
       </button>
-      <span className="min-w-12 text-center text-xl font-semibold tabular-nums">{value}</span>
+      <span className="flex-1 text-center font-mono text-[17px] font-medium tabular-nums">
+        {value}
+      </span>
       <button
         type="button"
         onClick={() => onChange(Math.min(value + 1, 999))}
-        className="h-12 w-12 rounded-xl bg-white text-xl font-semibold shadow-sm active:bg-slate-100"
+        aria-label={`Augmenter la quantité ${label}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
       >
-        +
+        <IconPlus />
       </button>
     </div>
   );

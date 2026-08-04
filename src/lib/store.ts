@@ -395,7 +395,7 @@ function makeDemoSession(): CartonSession {
     pageCount: 2,
     lines: [
       demoLine("9782070368228", "Le Petit Prince", "Antoine de Saint-Exupéry", 1, 1, 0),
-      demoLine("9782070612758", "L'Étranger", "Albert Camus", 3, 3, 0),
+      demoLine("9782070612758", "L’Étranger", "Albert Camus", 3, 3, 0),
       demoLine("9782021400984", "Les Misérables — tome I", "Victor Hugo", 5, 5, 0, [
         {
           id: crypto.randomUUID(),

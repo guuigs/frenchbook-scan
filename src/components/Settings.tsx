@@ -1,123 +1,82 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { useCarton } from "@/lib/store";
 import { setSoundEnabled as applySoundSetting } from "@/lib/feedback";
-import { clearPages } from "@/lib/pages";
-import { Button, Card, SectionTitle, Sheet } from "./ui";
+import { Button, Label, Sheet, Switch } from "./ui";
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const soundEnabled = useCarton((state) => state.soundEnabled);
   const setSoundEnabled = useCarton((state) => state.setSoundEnabled);
+  const abandonCarton = useCarton((state) => state.abandonCarton);
   const loadDemoOrder = useCarton((state) => state.loadDemoOrder);
-
-  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     applySoundSetting(soundEnabled);
   }, [soundEnabled]);
 
-  const signOut = async () => {
-    await fetch("/api/session", { method: "DELETE" });
-    setSignedOut(true);
-    window.location.reload();
-  };
-
   return (
     <Sheet
       open
-      title={<h2 className="text-lg font-semibold">Réglages</h2>}
+      header={<h2 className="text-[15px] font-medium">Réglages</h2>}
       footer={
-        <div className="pb-2">
+        <div className="pb-3">
           <Button onClick={onClose}>Fermer</Button>
         </div>
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-4">
         <section>
-          <SectionTitle>Poste de scan</SectionTitle>
-          <Card>
-            <label className="flex items-center justify-between">
-              <span className="font-medium">Bips de confirmation</span>
-              <input
-                type="checkbox"
-                checked={soundEnabled}
-                onChange={(event) => setSoundEnabled(event.target.checked)}
-                className="h-6 w-6 accent-blue-600"
-              />
+          <Label>Scan</Label>
+          <div className="flex items-center justify-between rounded-[10px] border border-border px-4 py-3">
+            <label htmlFor="sound" className="text-[14px]">
+              Bips de confirmation
             </label>
-            <p className="mt-2 text-xs text-slate-500">
-              Safari sur iOS ne permet aucune vibration : le son est le seul retour non visuel
-              disponible. Le désactiver laisse uniquement le voile de couleur plein écran.
-            </p>
-          </Card>
+            <Switch id="sound" checked={soundEnabled} onChange={setSoundEnabled} />
+          </div>
         </section>
 
         <section>
-          <SectionTitle>Fiabilité de lecture</SectionTitle>
-          <Card>
-            <p className="text-sm text-slate-600">
-              Chaque page est lue par deux moteurs Mistral indépendants, puis les résultats sont
-              comparés champ à champ. Les clés de contrôle ISBN sont vérifiées séparément. Ces
-              contrôles ne sont pas désactivables.
-            </p>
-          </Card>
+          <Label>Données</Label>
+          <Button
+            variant="secondaryDanger"
+            onClick={() => {
+              void abandonCarton();
+              onClose();
+            }}
+          >
+            Effacer le carton en cours
+          </Button>
         </section>
 
         <section>
-          <SectionTitle>Données</SectionTitle>
-          <Card className="space-y-3">
+          <Label>Accès</Label>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void fetch("/api/session", { method: "DELETE" }).then(() => window.location.reload());
+            }}
+          >
+            Se déconnecter
+          </Button>
+        </section>
+
+        {/* Opt-in explicite plutôt qu'un test sur NODE_ENV : permet d'activer la
+            démonstration sur un déploiement de préversion Vercel sans qu'elle
+            n'atteigne jamais la production. */}
+        {process.env.NEXT_PUBLIC_ENABLE_DEMO === "1" ? (
+          <section>
+            <Label>Développement</Label>
             <Button
-              tone="danger"
+              variant="secondary"
               onClick={() => {
-                if (confirm("Effacer le carton en cours et ses photos ?")) {
-                  void clearPages();
-                  void useCarton.getState().abandonCarton();
-                  onClose();
-                }
+                loadDemoOrder();
+                onClose();
               }}
             >
-              Effacer le carton en cours
+              Charger un bon de démonstration
             </Button>
-            <p className="text-xs text-slate-500">
-              Supprime immédiatement le bon lu, ses photos et le comptage. Sans effet si aucun
-              carton n&apos;est ouvert.
-            </p>
-          </Card>
-        </section>
-
-        <section>
-          <SectionTitle>Accès</SectionTitle>
-          <Card className="space-y-3">
-            <Button tone="secondary" disabled={signedOut} onClick={() => void signOut()}>
-              Se déconnecter de cet appareil
-            </Button>
-            <p className="text-xs text-slate-500">
-              Le code d&apos;accès sera redemandé au prochain lancement.
-            </p>
-          </Card>
-        </section>
-
-        {process.env.NODE_ENV !== "production" ? (
-          <section>
-            <SectionTitle>Développement</SectionTitle>
-            <Card className="space-y-3">
-              <Button
-                tone="secondary"
-                onClick={() => {
-                  loadDemoOrder();
-                  onClose();
-                }}
-              >
-                Charger un bon de démonstration
-              </Button>
-              <p className="text-xs text-slate-500">
-                Bon fictif de 7 titres comportant une divergence de lecture, une clé ISBN cassée et
-                une ligne à source unique. Permet de dérouler tout le flux sans photo ni appel
-                Mistral.
-              </p>
-            </Card>
           </section>
         ) : null}
       </div>

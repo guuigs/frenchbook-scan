@@ -22,15 +22,10 @@ import {
   totalMissing,
   totalSurplus,
 } from "@/lib/order";
-import type { OrderLine } from "@/lib/types";
-import { ActionBar, Banner, Button, Card, SectionTitle, StatRow } from "./ui";
+import type { CartonSession, OrderLine } from "@/lib/types";
+import { ActionBar, Button, Dialog, Label, Note, Row } from "./ui";
+import { IconChevronLeft, IconShare } from "./icons";
 
-/**
- * Récapitulatif de fin de carton, avant clôture définitive.
- *
- * C'est le dernier point où les données existent encore : la clôture purge
- * tout. L'export est donc proposé ici, pas après.
- */
 export function Summary() {
   const session = useCarton((state) => state.session);
   const returnToScanning = useCarton((state) => state.returnToScanning);
@@ -47,12 +42,11 @@ export function Summary() {
     setExporting(true);
     setExportError(null);
     try {
-      const files = await buildExportFiles(session);
-      await shareOrDownload(files);
+      await shareOrDownload(await buildExportFiles(session));
       setExported(true);
     } catch (error) {
       setExportError(
-        error instanceof Error ? error.message : "L'export n'a pas pu être généré.",
+        error instanceof Error ? error.message : "L’export a échoué. Réessayez.",
       );
     } finally {
       setExporting(false);
@@ -61,157 +55,141 @@ export function Summary() {
 
   return (
     <main className="flex min-h-dvh flex-col">
-      <header className="pt-safe flex items-center justify-between px-4 pb-2">
-        <button type="button" onClick={returnToScanning} className="text-sm font-semibold text-blue-600">
-          ‹ Reprendre le scan
+      <header className="pt-safe flex items-center justify-between px-4 pb-4">
+        <button
+          type="button"
+          onClick={returnToScanning}
+          className="flex items-center gap-1 text-[14px] text-muted hover:text-foreground"
+        >
+          <IconChevronLeft />
+          Scan
         </button>
-        <h1 className="font-semibold">Fin du carton</h1>
-        <span className="w-24" />
+        <h1 className="text-[15px] font-medium">Fin du carton</h1>
+        <span className="w-14" />
       </header>
 
-      <div className="flex-1 space-y-5 px-4 pb-6">
-        <Banner
-          tone={conform ? "ok" : "warning"}
-          title={conform ? "Carton conforme" : "Écarts constatés"}
-        >
-          {conform
-            ? "Tous les exemplaires annoncés ont été comptés."
-            : "Vérifiez les écarts ci-dessous avant de clôturer."}
-        </Banner>
+      <div className="flex-1 space-y-4 px-4 pb-6">
+        <Note tone={conform ? "success" : "warning"}>
+          {conform ? "Carton conforme" : "Écarts constatés"}
+        </Note>
 
         <section>
-          <SectionTitle>Synthèse</SectionTitle>
-          <Card>
-            <StatRow label="Titres au bon" value={session.lines.length} />
-            <StatRow label="Exemplaires attendus" value={totalExpected(session)} />
-            <StatRow label="Exemplaires comptés" value={totalCounted(session)} />
+          <Label>Synthèse</Label>
+          <div className="rounded-[10px] border border-border">
+            <Row label="Titres" value={session.lines.length} />
+            <Row label="Attendus" value={totalExpected(session)} />
+            <Row label="Comptés" value={totalCounted(session)} />
             {totalMissing(session) > 0 ? (
-              <StatRow label="Manquants" value={totalMissing(session)} tone="danger" />
+              <Row label="Manquants" value={totalMissing(session)} tone="danger" />
             ) : null}
             {totalSurplus(session) > 0 ? (
-              <StatRow label="En surplus" value={totalSurplus(session)} tone="warning" />
+              <Row label="Surplus" value={totalSurplus(session)} tone="warning" />
             ) : null}
             {totalDamaged(session) > 0 ? (
-              <StatRow label="Abîmés" value={totalDamaged(session)} tone="warning" />
+              <Row label="Abîmés" value={totalDamaged(session)} tone="warning" />
             ) : null}
             {totalExtras(session) > 0 ? (
-              <StatRow label="Hors bon de commande" value={totalExtras(session)} tone="warning" />
+              <Row label="Hors bon" value={totalExtras(session)} tone="warning" />
             ) : null}
-          </Card>
+          </div>
         </section>
 
-        <AnomalySection
+        <Anomalies
           title="Manques"
-          note="Ces titres n'ont pas été trouvés en totalité dans le carton."
           lines={missingLines(session)}
-          detail={(line) => `${shortfall(line)} manquant(s)`}
-          tone="text-red-600"
+          detail={(line) => `−${shortfall(line)}`}
+          tone="text-danger"
         />
-
-        <AnomalySection
+        <Anomalies
           title="Surplus"
           lines={surplusLines(session)}
           detail={(line) => `+${surplus(line)}`}
-          tone="text-amber-600"
+          tone="text-warning"
         />
-
-        <AnomalySection
-          title="Livres abîmés"
+        <Anomalies
+          title="Abîmés"
           lines={damagedLines(session)}
-          detail={(line) => `${line.damaged} abîmé(s)`}
-          tone="text-amber-600"
+          detail={(line) => `${line.damaged}`}
+          tone="text-warning"
         />
 
         {session.extras.length > 0 ? (
           <section>
-            <SectionTitle>Hors bon de commande</SectionTitle>
-            <Card>
+            <Label>Hors bon de commande</Label>
+            <ul className="rounded-[10px] border border-border">
               {session.extras.map((extra) => (
-                <div
+                <li
                   key={extra.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-2.5 last:border-0"
+                  className="flex items-center justify-between border-b border-border px-4 py-3 last:border-0"
                 >
-                  <span className="font-mono text-sm">{formatIsbn(extra.isbn)}</span>
-                  <span className="font-semibold text-amber-600">×{extra.counted}</span>
-                </div>
+                  <span className="font-mono text-[13px] tabular-nums" translate="no">
+                    {formatIsbn(extra.isbn)}
+                  </span>
+                  <span className="font-mono text-[13px] text-warning tabular-nums">
+                    ×{extra.counted}
+                  </span>
+                </li>
               ))}
-            </Card>
+            </ul>
           </section>
         ) : null}
 
-        <AnomalySection
+        <Anomalies
           title="Reliquats annoncés au bon"
-          note="Écart entre la quantité commandée et celle que le fournisseur déclare avoir livrée. Ce n'est pas un manque de votre côté."
           lines={backorderedLines(session)}
           detail={(line) => `${backorder(line)} en attente`}
-          tone="text-slate-500"
+          tone="text-muted"
         />
 
         <section>
-          <SectionTitle>Export</SectionTitle>
-          <Card>
-            <Button tone="secondary" disabled={exporting} onClick={() => void runExport()}>
-              {exporting ? "Génération…" : "⤴ Exporter le récapitulatif (PDF + CSV)"}
-            </Button>
-            {exported ? (
-              <p className="pt-3 text-center text-sm font-medium text-emerald-700">
-                Récapitulatif généré.
-              </p>
-            ) : null}
-            {exportError ? (
-              <p className="pt-3 text-center text-sm font-medium text-red-600">{exportError}</p>
-            ) : null}
-            <p className="pt-3 text-xs text-slate-500">
-              Les données de ce carton — bon de commande, photos et comptage — sont effacées de
-              l&apos;appareil à la clôture. Exportez maintenant si vous voulez en garder une trace.
-            </p>
-          </Card>
+          <Label>Export</Label>
+          <Button variant="secondary" disabled={exporting} onClick={() => void runExport()}>
+            <IconShare />
+            {exporting ? "Génération…" : exported ? "Exporter à nouveau" : "Exporter PDF + CSV"}
+          </Button>
+          {exportError ? (
+            <Note tone="danger" className="mt-2" aria-live="polite">
+              {exportError}
+            </Note>
+          ) : null}
         </section>
       </div>
 
       <ActionBar>
-        <Button tone={conform ? "success" : "warning"} onClick={() => setConfirming(true)}>
-          Clôturer le carton
-        </Button>
-        <p className="pt-2 pb-1 text-center text-xs text-slate-500">
-          Puis retour à l&apos;attente d&apos;un nouveau bon de commande.
-        </p>
+        <Button onClick={() => setConfirming(true)}>Clôturer le carton</Button>
+        <div className="h-3" />
       </ActionBar>
 
       {confirming ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirming(false)} />
-          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-            <h2 className="text-lg font-semibold">Clôturer définitivement ?</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              {conform ? "Aucun écart constaté." : describeAnomalies(session)} Toutes les données de
-              ce carton seront supprimées de l&apos;appareil.
-              {exported ? "" : " Vous n'avez pas encore exporté le récapitulatif."}
-            </p>
-            <div className="mt-5 space-y-2">
-              <Button tone="danger" onClick={() => void closeCarton()}>
-                Clôturer et effacer
-              </Button>
-              <Button tone="secondary" onClick={() => setConfirming(false)}>
-                Revenir au récapitulatif
-              </Button>
-            </div>
-          </div>
-        </div>
+        <Dialog
+          title="Clôturer définitivement ?"
+          body={
+            <>
+              {describeAnomalies(session)} Toutes les données de ce carton seront effacées.
+              {exported ? "" : " Le récapitulatif n’a pas été exporté."}
+            </>
+          }
+          onDismiss={() => setConfirming(false)}
+        >
+          <Button variant="danger" onClick={() => void closeCarton()}>
+            Clôturer et effacer
+          </Button>
+          <Button variant="secondary" onClick={() => setConfirming(false)}>
+            Annuler
+          </Button>
+        </Dialog>
       ) : null}
     </main>
   );
 }
 
-function AnomalySection({
+function Anomalies({
   title,
-  note,
   lines,
   detail,
   tone,
 }: {
   title: string;
-  note?: string;
   lines: OrderLine[];
   detail: (line: OrderLine) => string;
   tone: string;
@@ -220,36 +198,41 @@ function AnomalySection({
 
   return (
     <section>
-      <SectionTitle>{title}</SectionTitle>
-      <Card>
+      <Label>
+        {title} · {lines.length}
+      </Label>
+      <ul className="rounded-[10px] border border-border">
         {lines.map((line) => (
-          <div
+          <li
             key={line.id}
-            className="flex items-start justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0"
+            className="deferred-row flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0"
           >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{line.title}</p>
-              <p className="font-mono text-xs text-slate-500">{formatIsbn(line.isbn)}</p>
-            </div>
-            <div className="text-right">
-              <p className={`text-sm font-semibold ${tone}`}>{detail(line)}</p>
-              <p className="text-xs text-slate-500 tabular-nums">
+            <span className="min-w-0">
+              <span className="block truncate text-[14px]">{line.title}</span>
+              <span className="block font-mono text-[11px] text-faint tabular-nums" translate="no">
+                {formatIsbn(line.isbn)}
+              </span>
+            </span>
+            <span className="shrink-0 text-right">
+              <span className={`block font-mono text-[14px] tabular-nums ${tone}`}>
+                {detail(line)}
+              </span>
+              <span className="block font-mono text-[11px] text-faint tabular-nums">
                 {line.counted}/{expected(line)}
-              </p>
-            </div>
-          </div>
+              </span>
+            </span>
+          </li>
         ))}
-        {note ? <p className="pt-3 text-xs text-slate-500">{note}</p> : null}
-      </Card>
+      </ul>
     </section>
   );
 }
 
-function describeAnomalies(session: Parameters<typeof totalMissing>[0]): string {
+function describeAnomalies(session: CartonSession): string {
   const parts: string[] = [];
-  if (totalMissing(session) > 0) parts.push(`${totalMissing(session)} manquant(s)`);
+  if (totalMissing(session) > 0) parts.push(`${totalMissing(session)} manquants`);
   if (totalSurplus(session) > 0) parts.push(`${totalSurplus(session)} en surplus`);
-  if (totalDamaged(session) > 0) parts.push(`${totalDamaged(session)} abîmé(s)`);
+  if (totalDamaged(session) > 0) parts.push(`${totalDamaged(session)} abîmés`);
   if (totalExtras(session) > 0) parts.push(`${totalExtras(session)} hors commande`);
-  return parts.length > 0 ? `${parts.join(", ")}.` : "Aucun écart constaté.";
+  return parts.length > 0 ? `${parts.join(", ")}.` : "Aucun écart.";
 }

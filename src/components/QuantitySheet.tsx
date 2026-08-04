@@ -4,9 +4,10 @@ import { useState } from "react";
 
 import { formatIsbn } from "@/lib/isbn";
 import { play } from "@/lib/feedback";
-import { backorder, displayAuthor, expected, isComplete } from "@/lib/order";
+import { displayAuthor, expected, isComplete } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
-import { Button, Card, NumberPad, Sheet } from "./ui";
+import { Button, NumberPad, Note, Sheet } from "./ui";
+import { IconMinus, IconPlus } from "./icons";
 
 /**
  * Confirmation de quantité pour un titre attendu en plusieurs exemplaires.
@@ -22,147 +23,123 @@ export function QuantitySheet({
   onCancel,
 }: {
   line: OrderLine;
-  /** D'où vient l'ouverture : la quantité proposée par défaut en dépend. */
   context: "scan" | "correction";
   onConfirm: (counted: number, damaged: number) => void;
   onCancel: () => void;
 }) {
   const target = expected(line);
 
-  const [count, setCount] = useState(() => {
-    if (context === "correction") return line.counted;
-    // Ligne déjà soldée : un exemplaire de plus vient d'être scanné.
-    return isComplete(line) ? line.counted + 1 : target;
-  });
+  const [count, setCount] = useState(() =>
+    context === "correction" ? line.counted : isComplete(line) ? line.counted + 1 : target,
+  );
   const [damaged, setDamaged] = useState(line.damaged);
   const [padOpen, setPadOpen] = useState(false);
 
-  const tone = count > target ? "warning" : count < target ? "danger" : "success";
-  const numberColour =
-    count > target ? "text-amber-600" : count < target ? "text-red-600" : "text-emerald-600";
-
-  const confirmLabel =
-    context === "correction"
-      ? `Enregistrer ${count} exemplaire(s)`
-      : count === target && count > 1
-        ? `Les ${count} sont là`
-        : `Valider ${count} exemplaire(s)`;
+  const gap = count - target;
+  const colour = gap > 0 ? "text-warning" : gap < 0 ? "text-danger" : "text-success";
 
   return (
     <Sheet
       open
-      title={
+      header={
         <>
-          <h2 className="text-lg leading-tight font-semibold">{line.title}</h2>
-          <p className="text-sm text-slate-500">{displayAuthor(line)}</p>
-          <p className="mt-0.5 font-mono text-xs text-slate-400">{formatIsbn(line.isbn)}</p>
+          <h2 className="truncate text-[15px] font-medium">{line.title}</h2>
+          <p className="truncate text-[13px] text-muted">{displayAuthor(line)}</p>
+          <p className="mt-0.5 font-mono text-[11px] text-faint tabular-nums" translate="no">
+            {formatIsbn(line.isbn)}
+          </p>
         </>
       }
       footer={
-        <div className="space-y-2 pb-2">
+        <div className="space-y-2 pb-3">
           <Button
-            tone={tone}
             onClick={() => {
               play("success");
               onConfirm(count, damaged);
             }}
           >
-            {confirmLabel}
+            {gap === 0 && count > 1 ? `Les ${count} sont là` : `Valider ${count}`}
           </Button>
-          <div className="flex gap-2">
-            <Button tone="secondary" onClick={() => setPadOpen((open) => !open)}>
-              {padOpen ? "Masquer le pavé" : "Autre quantité"}
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => setPadOpen((open) => !open)}>
+              {padOpen ? "Masquer" : "Saisir"}
             </Button>
-            <Button tone="secondary" onClick={onCancel} className="max-w-32">
+            <Button variant="secondary" onClick={onCancel}>
               Annuler
             </Button>
           </div>
         </div>
       }
     >
-      <div className="space-y-5">
-        <div className="text-center">
-          <p className="text-sm font-medium text-slate-500">Quantité comptée</p>
-          <div className="mt-2 flex items-center justify-center gap-6">
-            <button
-              type="button"
-              onClick={() => setCount((value) => Math.max(value - 1, 0))}
-              className="h-14 w-14 rounded-full bg-white text-2xl font-semibold shadow-sm active:bg-slate-100"
-            >
-              −
-            </button>
-            <span className={`min-w-24 text-6xl font-bold tabular-nums ${numberColour}`}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-center gap-6 py-2">
+          <button
+            type="button"
+            onClick={() => setCount((value) => Math.max(value - 1, 0))}
+            aria-label="Diminuer la quantité comptée"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
+          >
+            <IconMinus className="h-5 w-5" />
+          </button>
+
+          <p className="text-center">
+            <span className={`block font-mono text-[56px] leading-none font-medium tabular-nums ${colour}`}>
               {count}
             </span>
-            <button
-              type="button"
-              onClick={() => setCount((value) => Math.min(value + 1, 999))}
-              className="h-14 w-14 rounded-full bg-white text-2xl font-semibold shadow-sm active:bg-slate-100"
-            >
-              +
-            </button>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">sur {target} annoncé(s) au bon</p>
+            <span className="mt-1.5 block font-mono text-[12px] text-faint tabular-nums">
+              attendu {target}
+            </span>
+          </p>
 
-          {count < target ? (
-            <p className="mt-2 inline-block rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">
-              {target - count} manquant(s)
-            </p>
-          ) : count > target ? (
-            <p className="mt-2 inline-block rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">
-              {count - target} en surplus
-            </p>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => setCount((value) => Math.min(value + 1, 999))}
+            aria-label="Augmenter la quantité comptée"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
+          >
+            <IconPlus className="h-5 w-5" />
+          </button>
         </div>
+
+        {gap !== 0 ? (
+          <Note tone={gap > 0 ? "warning" : "danger"} aria-live="polite">
+            {gap > 0 ? `${gap} en surplus` : `${-gap} manquant${-gap > 1 ? "s" : ""}`}
+          </Note>
+        ) : null}
 
         {padOpen ? <NumberPad value={count} onChange={setCount} /> : null}
 
-        <Card>
-          <div className="flex items-center justify-between">
-            <span className="font-medium">⚠ Exemplaires abîmés</span>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setDamaged((value) => Math.max(value - 1, 0))}
-                className="h-10 w-10 rounded-lg bg-slate-100 text-lg font-semibold active:bg-slate-200"
-              >
-                −
-              </button>
-              <span
-                className={`min-w-6 text-center text-lg font-semibold tabular-nums ${
-                  damaged > 0 ? "text-amber-600" : "text-slate-400"
-                }`}
-              >
-                {damaged}
-              </span>
-              <button
-                type="button"
-                onClick={() => setDamaged((value) => Math.min(value + 1, Math.max(count, 1)))}
-                className="h-10 w-10 rounded-lg bg-slate-100 text-lg font-semibold active:bg-slate-200"
-              >
-                +
-              </button>
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Comptés dans la quantité reçue, mais signalés au récapitulatif.
-          </p>
-        </Card>
+        <div className="flex items-center justify-between rounded-[10px] border border-border px-4 py-3">
+          <span className="text-[14px]">Abîmés</span>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDamaged((value) => Math.max(value - 1, 0))}
+              aria-label="Diminuer le nombre d’exemplaires abîmés"
+              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
+            >
+              <IconMinus className="h-3.5 w-3.5" />
+            </button>
+            <span
+              className={`w-6 text-center font-mono text-[15px] tabular-nums ${
+                damaged > 0 ? "text-warning" : "text-faint"
+              }`}
+            >
+              {damaged}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDamaged((value) => Math.min(value + 1, Math.max(count, 1)))}
+              aria-label="Augmenter le nombre d’exemplaires abîmés"
+              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        </div>
 
-        {context === "correction" ? (
-          <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-600">
-            Correction manuelle : {line.counted} exemplaire(s) déjà compté(s) pour ce titre.
-          </p>
-        ) : isComplete(line) ? (
-          <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-            Ce titre était déjà complet ({line.counted}/{target}). Toute quantité supplémentaire
-            sera signalée en surplus.
-          </p>
-        ) : backorder(line) > 0 ? (
-          <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-600">
-            Le bon annonce {line.quantityDelivered} exemplaire(s) livré(s) sur{" "}
-            {line.quantityOrdered} commandé(s) : {backorder(line)} en reliquat.
-          </p>
+        {context === "scan" && isComplete(line) ? (
+          <Note tone="warning">Titre déjà complet ({line.counted}/{target}).</Note>
         ) : null}
       </div>
     </Sheet>

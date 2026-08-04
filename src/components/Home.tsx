@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 
 import { useCarton } from "@/lib/store";
 import { makeThumbnail, prepareForUpload } from "@/lib/images";
-import { ActionBar, Banner, Button, Card, SectionTitle } from "./ui";
+import { ActionBar, Button, IconButton, Note } from "./ui";
+import { IconBox, IconCamera, IconClose, IconImage, IconSettings } from "./icons";
 
 interface StagedPage {
   id: string;
@@ -12,20 +13,6 @@ interface StagedPage {
   thumbnail: string;
 }
 
-const STEPS: Array<[string, string, string]> = [
-  ["1", "Photographier le bon", "Une page après l'autre, dans l'ordre du document."],
-  ["2", "Contrôler la lecture", "Seules les lignes douteuses vous sont soumises."],
-  ["3", "Scanner les livres", "La caméra reste active, les scans s'enchaînent."],
-  ["4", "Clôturer le carton", "Récapitulatif des écarts, export, puis effacement."],
-];
-
-/**
- * Écran d'attente et constitution du bon de commande.
- *
- * Safari n'offre pas de scanner multipage : on assemble donc les pages une à
- * une dans une zone de préparation, ce qui permet en prime de revoir l'ordre
- * et de reprendre une photo ratée avant de lancer la lecture.
- */
 export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
   const processPages = useCarton((state) => state.processPages);
   const error = useCarton((state) => state.error);
@@ -52,98 +39,76 @@ export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
       }
       setPages((current) => [...current, ...added]);
     } catch {
-      setError("Cette image n'a pas pu être lue. Reprenez la photo.");
+      setError("Cette image n’a pas pu être lue. Reprenez la photo.");
     } finally {
       setBusy(false);
     }
   };
 
-  const removePage = (id: string) => setPages((current) => current.filter((page) => page.id !== id));
-
   return (
     <main className="flex min-h-dvh flex-col">
-      <header className="pt-safe flex items-center justify-between px-5 pb-2">
-        <h1 className="text-3xl font-bold">Réception</h1>
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          aria-label="Réglages"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg shadow-sm"
-        >
-          ⚙︎
-        </button>
+      <header className="pt-safe flex items-center justify-between px-4 pb-4">
+        <h1 className="text-[22px] font-semibold">Réception</h1>
+        <IconButton label="Réglages" onClick={onOpenSettings}>
+          <IconSettings />
+        </IconButton>
       </header>
 
-      <div className="flex-1 space-y-5 px-4 pb-6">
+      {/* Sur un écran vide, le contenu se centre plutôt que de flotter en haut
+          d'une page aux trois quarts vide. */}
+      <div
+        className={`flex flex-1 flex-col gap-3 px-4 pb-6 ${
+          pages.length === 0 ? "justify-center" : ""
+        }`}
+      >
         {error ? (
-          <Banner tone="danger" title="Lecture impossible">
-            <p>{error}</p>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              className="mt-2 font-semibold underline"
-            >
-              Masquer
-            </button>
-          </Banner>
+          <Note tone="danger" aria-live="polite">
+            {error}
+          </Note>
         ) : null}
 
         {pages.length === 0 ? (
-          <Card className="text-center">
-            <div className="py-4 text-5xl">📦</div>
-            <p className="text-lg font-semibold">Aucun carton en cours</p>
-            <p className="mt-1 text-sm text-slate-500">
-              Commencez par photographier le bon de commande papier trouvé dans le carton.
-            </p>
-          </Card>
+          <div className="flex flex-col items-center rounded-[10px] border border-dashed border-border-strong px-6 py-12 text-center">
+            <IconBox className="h-6 w-6 text-faint" />
+            <p className="mt-3 text-[15px] font-medium">Aucun carton en cours</p>
+            <p className="mt-1 text-[13px] text-muted">Photographiez le bon de commande.</p>
+          </div>
         ) : (
-          <section>
-            <SectionTitle
-              action={
+          <ul className="grid grid-cols-3 gap-2">
+            {pages.map((page, index) => (
+              <li key={page.id} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={page.thumbnail}
+                  alt={`Page ${index + 1}`}
+                  width={180}
+                  height={240}
+                  className="aspect-3/4 w-full rounded-[8px] border border-border bg-subtle object-cover"
+                />
+                <span className="absolute bottom-1.5 left-1.5 rounded-[4px] bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white tabular-nums">
+                  {index + 1}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setPages([])}
-                  className="text-sm font-semibold text-red-600"
+                  onClick={() => setPages((current) => current.filter((p) => p.id !== page.id))}
+                  aria-label={`Retirer la page ${index + 1}`}
+                  className="absolute -top-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-panel text-muted hover:text-foreground active:bg-subtle"
                 >
-                  Tout retirer
+                  <IconClose className="h-3 w-3" />
                 </button>
-              }
-            >
-              {pages.length} page{pages.length > 1 ? "s" : ""} prête
-              {pages.length > 1 ? "s" : ""}
-            </SectionTitle>
-            <div className="grid grid-cols-3 gap-3">
-              {pages.map((page, index) => (
-                <div key={page.id} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={page.thumbnail}
-                    alt={`Page ${index + 1}`}
-                    className="aspect-3/4 w-full rounded-xl border border-slate-200 bg-white object-cover"
-                  />
-                  <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs font-semibold text-white">
-                    {index + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removePage(page.id)}
-                    aria-label={`Retirer la page ${index + 1}`}
-                    className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-sm font-bold text-white shadow"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
+              </li>
+            ))}
+          </ul>
         )}
 
-        <div className="space-y-2">
-          <Button tone="secondary" onClick={() => cameraInput.current?.click()} disabled={busy}>
-            📷 {pages.length === 0 ? "Photographier une page" : "Ajouter une page"}
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" onClick={() => cameraInput.current?.click()} disabled={busy}>
+            <IconCamera />
+            {pages.length === 0 ? "Photographier" : "Ajouter"}
           </Button>
-          <Button tone="secondary" onClick={() => libraryInput.current?.click()} disabled={busy}>
-            🖼️ Importer depuis la photothèque
+          <Button variant="secondary" onClick={() => libraryInput.current?.click()} disabled={busy}>
+            <IconImage />
+            Importer
           </Button>
         </div>
 
@@ -169,36 +134,14 @@ export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
             event.target.value = "";
           }}
         />
-
-        <section>
-          <SectionTitle>Déroulé</SectionTitle>
-          <Card className="space-y-3">
-            {STEPS.map(([number, title, detail]) => (
-              <div key={number} className="flex gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600">
-                  {number}
-                </span>
-                <div>
-                  <p className="font-medium">{title}</p>
-                  <p className="text-sm text-slate-500">{detail}</p>
-                </div>
-              </div>
-            ))}
-          </Card>
-        </section>
       </div>
 
       {pages.length > 0 ? (
         <ActionBar>
-          <Button
-            disabled={busy}
-            onClick={() => void processPages(pages.map((page) => page.file))}
-          >
+          <Button disabled={busy} onClick={() => void processPages(pages.map((page) => page.file))}>
             Lire {pages.length} page{pages.length > 1 ? "s" : ""}
           </Button>
-          <p className="pt-2 pb-1 text-center text-xs text-slate-500">
-            Chaque page est lue par deux moteurs indépendants, puis comparée.
-          </p>
+          <div className="h-3" />
         </ActionBar>
       ) : null}
     </main>

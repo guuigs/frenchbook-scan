@@ -1,32 +1,128 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
-    sans-serif;
+/*
+ * Jetons repris du design system Geist de Vercel : surfaces plates séparées
+ * par un trait de 1 px plutôt que par des ombres, contraste élevé, un seul
+ * accent. Les couleurs d'état ne servent qu'à signaler une anomalie — elles ne
+ * décorent rien.
+ */
+:root {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --subtle: #fafafa;
+  --border: #ebebeb;
+  --border-strong: #d4d4d4;
+  --fg: #0a0a0a;
+  --muted: #666666;
+  --faint: #8f8f8f;
+
+  --accent: #0070f3;
+  --accent-fg: #ffffff;
+  --success: #0f7b34;
+  --success-bg: #edf7ee;
+  --warning: #a35200;
+  --warning-bg: #fff8e6;
+  --danger: #d93036;
+  --danger-bg: #fff0f0;
+
+  color-scheme: light;
 }
 
-:root {
-  color-scheme: light;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --subtle: #161616;
+    --border: #242424;
+    --border-strong: #3a3a3a;
+    --fg: #ededed;
+    --muted: #a1a1a1;
+    --faint: #7d7d7d;
+
+    --accent: #3291ff;
+    --accent-fg: #ffffff;
+    --success: #4cc38a;
+    --success-bg: #0d2818;
+    --warning: #f5a623;
+    --warning-bg: #2b1d00;
+    --danger: #ff6166;
+    --danger-bg: #2d0f11;
+
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-panel: var(--panel);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-geist: 8px;
 }
 
 html,
 body {
-  /* Le rebond de défilement de Safari sous une caméra plein écran donne une
-     impression de flottement : on l'ancre. */
+  background: var(--bg);
+  color: var(--fg);
+  /* Le rebond de défilement sous une caméra plein écran donne une impression
+     de flottement : on l'ancre. */
   overscroll-behavior-y: none;
 }
 
 body {
   -webkit-tap-highlight-color: transparent;
+  /* Supprime le délai de 300 ms hérité du double-tap sans désactiver le zoom :
+     l'opérateur doit pouvoir agrandir une photo de bon de commande. */
+  touch-action: manipulation;
+}
+
+/* Titres resserrés, signature typographique de Geist. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+/*
+ * Un bon de commande peut compter deux cents lignes. `content-visibility`
+ * évite d'en calculer la mise en page tant qu'elles sont hors écran, sans
+ * introduire de virtualisation et son lot de bugs de défilement.
+ */
+.deferred-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 88px;
 }
 
 /* Zones sûres iPhone : encoche en haut, barre d'accueil en bas. */
 .pt-safe {
-  padding-top: max(env(safe-area-inset-top), 0.5rem);
+  padding-top: max(env(safe-area-inset-top), 0.75rem);
 }
 
 .pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

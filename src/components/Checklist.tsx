@@ -7,15 +7,14 @@ import { formatIsbn } from "@/lib/isbn";
 import { normalizeText } from "@/lib/reconciler";
 import { expected, isComplete, surplus } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
-import { Button, SectionTitle, Sheet } from "./ui";
+import { Button, Input, Label, Sheet } from "./ui";
+import { IconCheck } from "./icons";
 import { QuantitySheet } from "./QuantitySheet";
 
 /**
- * Consultation de l'avancement pendant le scan, sans quitter le carton.
- *
- * Deux usages : retrouver un titre précis dans un gros carton, et corriger une
- * ligne déjà comptée — notamment pour signaler un exemplaire abîmé sur un titre
- * en quantité 1, validé d'office au scan sans écran de saisie.
+ * Avancement pendant le scan. Deux usages : retrouver un titre dans un gros
+ * carton, et corriger une ligne déjà comptée — c'est le seul endroit où
+ * signaler un exemplaire abîmé sur un titre en quantité 1, validé d'office.
  */
 export function Checklist({ onClose }: { onClose: () => void }) {
   const session = useCarton((state) => state.session);
@@ -60,72 +59,72 @@ export function Checklist({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
       open
-      title={<h2 className="text-lg font-semibold">Avancement</h2>}
+      header={<h2 className="text-[15px] font-medium">Avancement</h2>}
       footer={
-        <div className="pb-2">
+        <div className="pb-3">
           <Button onClick={onClose}>Reprendre le scan</Button>
         </div>
       }
     >
-      <div className="space-y-5">
-        <input
+      <div className="space-y-4">
+        <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Titre, auteur ou ISBN"
-          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 outline-none focus:border-blue-500"
+          aria-label="Rechercher un titre"
+          type="search"
+          autoComplete="off"
+          placeholder="Titre, auteur ou ISBN…"
         />
 
         {remaining.length > 0 ? (
           <section>
-            <SectionTitle>Restant à trouver — {remaining.length}</SectionTitle>
-            <div className="space-y-2">
+            <Label>Restant · {remaining.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
               {remaining.map((line) => (
                 <Row key={line.id} line={line} onSelect={() => setEditing(line)} />
               ))}
-            </div>
+            </ul>
           </section>
         ) : null}
 
         {done.length > 0 ? (
           <section>
-            <SectionTitle>Comptés — {done.length}</SectionTitle>
-            <div className="space-y-2">
+            <Label>Comptés · {done.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
               {done.map((line) => (
                 <Row key={line.id} line={line} onSelect={() => setEditing(line)} />
               ))}
-            </div>
-            <p className="px-1 pt-2 text-xs text-slate-500">
-              Touchez un titre pour corriger sa quantité ou signaler un exemplaire abîmé.
-            </p>
+            </ul>
           </section>
         ) : null}
 
         {session.extras.length > 0 ? (
           <section>
-            <SectionTitle>Hors bon de commande</SectionTitle>
-            <div className="space-y-2">
+            <Label>Hors bon · {session.extras.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
               {session.extras.map((extra) => (
-                <div
+                <li
                   key={extra.id}
-                  className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm"
+                  className="flex items-center justify-between border-b border-border bg-panel px-4 py-3 last:border-0"
                 >
-                  <span className="font-mono text-sm">{formatIsbn(extra.isbn)}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="font-semibold text-amber-600 tabular-nums">
+                  <span className="font-mono text-[13px] tabular-nums" translate="no">
+                    {formatIsbn(extra.isbn)}
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className="font-mono text-[13px] text-warning tabular-nums">
                       ×{extra.counted}
                     </span>
                     <button
                       type="button"
                       onClick={() => removeExtra(extra.id)}
-                      aria-label="Retirer"
-                      className="text-sm font-semibold text-red-600"
+                      className="text-[13px] text-muted hover:text-danger"
                     >
                       Retirer
                     </button>
-                  </div>
-                </div>
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         ) : null}
       </div>
@@ -135,34 +134,38 @@ export function Checklist({ onClose }: { onClose: () => void }) {
 
 function Row({ line, onSelect }: { line: OrderLine; onSelect: () => void }) {
   const target = expected(line);
-  const colour =
-    surplus(line) > 0
-      ? "text-amber-600"
-      : isComplete(line)
-        ? "text-emerald-600"
-        : "text-slate-400";
+  const complete = isComplete(line);
+  const colour = surplus(line) > 0 ? "text-warning" : complete ? "text-success" : "text-faint";
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm active:bg-slate-50"
-    >
-      <span className={`text-lg ${isComplete(line) ? "text-emerald-600" : "text-slate-300"}`}>
-        {isComplete(line) ? "●" : "○"}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{line.title}</span>
-        <span className="block font-mono text-xs text-slate-500">{formatIsbn(line.isbn)}</span>
-      </span>
-      <span className="text-right">
-        <span className={`block font-semibold tabular-nums ${colour}`}>
-          {line.counted}/{target}
+    <li className="deferred-row border-b border-border last:border-0">
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex w-full items-center gap-3 bg-panel px-4 py-3 text-left hover:bg-subtle active:bg-subtle"
+      >
+        <span className={`shrink-0 ${complete ? "text-success" : "text-faint"}`}>
+          {complete ? (
+            <IconCheck className="h-4 w-4" />
+          ) : (
+            <span className="block h-3.5 w-3.5 rounded-full border border-current" />
+          )}
         </span>
-        {line.damaged > 0 ? (
-          <span className="block text-xs text-amber-600">{line.damaged} abîmé(s)</span>
-        ) : null}
-      </span>
-    </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[14px]">{line.title}</span>
+          <span className="block font-mono text-[11px] text-faint tabular-nums" translate="no">
+            {formatIsbn(line.isbn)}
+          </span>
+        </span>
+        <span className="text-right">
+          <span className={`block font-mono text-[14px] tabular-nums ${colour}`}>
+            {line.counted}/{target}
+          </span>
+          {line.damaged > 0 ? (
+            <span className="block font-mono text-[10px] text-warning">{line.damaged} abîmé</span>
+          ) : null}
+        </span>
+      </button>
+    </li>
   );
 }

@@ -16,6 +16,7 @@ import {
   totalExpected,
 } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
+import { IconCheck, IconChevronRight, IconList } from "./icons";
 import { QuantitySheet } from "./QuantitySheet";
 import { UnknownCodeSheet } from "./UnknownCodeSheet";
 import { Checklist } from "./Checklist";
@@ -31,9 +32,9 @@ interface Flash {
 /**
  * Poste de scan : la caméra ne s'arrête jamais.
  *
- * Sans retour haptique possible dans Safari, la confirmation repose entièrement
- * sur le son et sur un voile de couleur plein écran : l'opérateur doit pouvoir
- * savoir qu'un livre est compté sans fixer l'écran.
+ * Safari n'autorise aucune vibration. La confirmation repose donc sur le son et
+ * sur un voile de couleur plein écran, assez large pour être perçu du coin de
+ * l'œil sans fixer l'écran.
  */
 export function ScanScreen() {
   const session = useCarton((state) => state.session);
@@ -79,8 +80,6 @@ export function ScanScreen() {
 
   const { status, message, clearDebounce } = useBarcodeScanner({ videoRef, onCode, paused });
 
-  // Le son doit être débloqué par un geste utilisateur : l'écran de scan est
-  // toujours atteint depuis un bouton, ce qui suffit à iOS.
   useEffect(() => {
     unlockAudio();
     return () => {
@@ -90,14 +89,12 @@ export function ScanScreen() {
 
   useWakeLock(status === "running");
 
-  const resume = () => clearDebounce();
-
   const counted = totalCounted(session);
   const target = totalExpected(session);
-  const remainingTitles = session.lines.filter((line) => !isComplete(line)).length;
+  const remaining = session.lines.filter((line) => !isComplete(line)).length;
 
   return (
-    <main className="fixed inset-0 flex flex-col bg-black">
+    <main className="fixed inset-0 flex flex-col bg-black text-white">
       <video
         ref={videoRef}
         playsInline
@@ -107,62 +104,55 @@ export function ScanScreen() {
       />
 
       {status !== "running" ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-black px-8 text-center">
-          <p className="text-white/80">
-            {status === "denied" || status === "error"
-              ? message
-              : "Démarrage de la caméra…"}
-          </p>
-        </div>
+        <p className="absolute inset-0 flex items-center justify-center bg-black px-8 text-center text-[14px] text-white/70">
+          {status === "denied" || status === "error" ? message : "Démarrage de la caméra…"}
+        </p>
       ) : (
         <div
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-1/2 h-40 w-64 -translate-x-1/2 -translate-y-1/2 rounded-3xl border-2 border-dashed border-white/60"
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-1/2 h-36 w-60 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-white/50"
         />
       )}
 
-      <header className="pt-safe relative px-3 pt-2">
-        <div className="rounded-2xl bg-black/45 p-3 backdrop-blur">
-          <div className="flex items-baseline justify-between text-white">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{sessionTitle(session)}</p>
-              {session.reference ? (
-                <p className="truncate text-xs text-white/60">{session.reference}</p>
-              ) : null}
-            </div>
-            <p className="ml-3 shrink-0 text-sm font-semibold tabular-nums">
-              {counted} / {target}
+      <header className="pt-safe relative px-3">
+        <div className="rounded-[10px] border border-white/15 bg-black/55 px-3 py-2.5 backdrop-blur">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="min-w-0 truncate text-[13px] font-medium">{sessionTitle(session)}</p>
+            <p className="shrink-0 font-mono text-[13px] tabular-nums">
+              {counted}
+              <span className="text-white/50">/{target}</span>
             </p>
           </div>
-
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/25">
+          <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-white/20">
             <div
-              className="h-full rounded-full bg-emerald-400 transition-[width] duration-300"
+              className="h-full bg-white transition-[width] duration-300"
               style={{ width: `${Math.min(progress(session) * 100, 100)}%` }}
             />
           </div>
-          <p className="mt-1.5 text-xs text-white/70">
-            {remainingTitles} titre(s) restant(s) à trouver
+          <p className="mt-1.5 font-mono text-[11px] text-white/50 tabular-nums">
+            {remaining} titre{remaining > 1 ? "s" : ""} restant{remaining > 1 ? "s" : ""}
           </p>
         </div>
       </header>
 
       <div className="flex-1" />
 
-      <footer className="pb-safe relative flex items-center justify-between px-4 pb-2">
+      <footer className="pb-safe relative flex items-center justify-between gap-3 px-3">
         <button
           type="button"
           onClick={() => setShowChecklist(true)}
-          className="min-h-11 rounded-full bg-black/45 px-4 text-sm font-medium text-white backdrop-blur active:bg-black/60"
+          className="flex min-h-11 items-center gap-2 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] backdrop-blur active:bg-black/70"
         >
-          ☰ Liste
+          <IconList />
+          Liste
         </button>
         <button
           type="button"
           onClick={requestSummary}
-          className="min-h-11 rounded-full bg-black/45 px-4 text-sm font-semibold text-white backdrop-blur active:bg-black/60"
+          className="flex min-h-11 items-center gap-1.5 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] font-medium backdrop-blur active:bg-black/70"
         >
-          Fin du carton ›
+          Fin du carton
+          <IconChevronRight />
         </button>
       </footer>
 
@@ -170,14 +160,16 @@ export function ScanScreen() {
         <div
           key={flash.id}
           aria-live="polite"
-          className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-white ${
-            flash.tone === "ok" ? "bg-emerald-600/90" : "bg-amber-600/90"
+          className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center text-white ${
+            flash.tone === "ok" ? "bg-[#0f7b34]/95" : "bg-[#a35200]/95"
           }`}
         >
-          <span className="text-7xl">✓</span>
-          <span className="mt-2 text-5xl font-bold tabular-nums">{flash.counter}</span>
-          <span className="mt-4 max-w-xs px-6 text-center text-lg font-semibold">{flash.title}</span>
-          <span className="mt-1 max-w-xs truncate px-6 text-sm text-white/80">{flash.subtitle}</span>
+          <IconCheck className="h-12 w-12" />
+          <p className="mt-3 font-mono text-[44px] leading-none font-medium tabular-nums">
+            {flash.counter}
+          </p>
+          <p className="mt-5 line-clamp-2 text-[16px] font-medium">{flash.title}</p>
+          <p className="mt-1 truncate text-[13px] text-white/70">{flash.subtitle}</p>
         </div>
       ) : null}
 
@@ -189,17 +181,17 @@ export function ScanScreen() {
             setCount(pendingLine.id, count, damaged);
             const done = count === expected(pendingLine);
             setPendingLine(null);
-            resume();
+            clearDebounce();
             showFlash(
               done ? "ok" : "warning",
               `${count}/${expected(pendingLine)}`,
               pendingLine.title,
-              damaged > 0 ? `${damaged} abîmé(s) signalé(s)` : "Quantité enregistrée",
+              damaged > 0 ? `${damaged} abîmé${damaged > 1 ? "s" : ""}` : "Enregistré",
             );
           }}
           onCancel={() => {
             setPendingLine(null);
-            resume();
+            clearDebounce();
           }}
         />
       ) : null}
@@ -210,12 +202,12 @@ export function ScanScreen() {
           onRecord={() => {
             recordExtra(unknownCode);
             setUnknownCode(null);
-            resume();
+            clearDebounce();
             showFlash("warning", "+1", "Hors bon de commande", formatIsbn(unknownCode));
           }}
           onIgnore={() => {
             setUnknownCode(null);
-            resume();
+            clearDebounce();
           }}
         />
       ) : null}
@@ -224,7 +216,7 @@ export function ScanScreen() {
         <Checklist
           onClose={() => {
             setShowChecklist(false);
-            resume();
+            clearDebounce();
           }}
         />
       ) : null}
