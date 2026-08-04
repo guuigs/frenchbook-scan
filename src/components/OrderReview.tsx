@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 
 import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
-import { displayAuthor, isReviewComplete, needsReview, totalExpected } from "@/lib/order";
+import {
+  declaredQuantityGap,
+  displayPublisher,
+  isReviewComplete,
+  needsReview,
+  readTotalQuantity,
+  totalExpected,
+} from "@/lib/order";
 import { ISSUE_LABELS, type OrderLine } from "@/lib/types";
 import { ActionBar, Button, Dialog, Label, Note, Tag } from "./ui";
 import { IconAlert, IconCheck, IconChevronRight, IconPlus } from "./icons";
@@ -38,6 +45,7 @@ export function OrderReview() {
   );
 
   const clean = isReviewComplete(session);
+  const gap = declaredQuantityGap(session);
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -62,6 +70,34 @@ export function OrderReview() {
 
       <div className="flex-1 space-y-4 px-4 pb-6">
         {degraded ? <Note tone="warning">Un seul moteur a répondu sur certaines pages.</Note> : null}
+
+        {gap !== null ? (
+          <Note tone="warning">
+            Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
+            {readTotalQuantity(session)}.
+          </Note>
+        ) : null}
+
+        {session.notDelivered.length > 0 ? (
+          <section>
+            <Label>Annoncés non livrés · {session.notDelivered.length}</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
+              {session.notDelivered.map((item) => (
+                <li key={item.id} className="border-b border-border bg-panel px-4 py-3 last:border-0">
+                  <p className="text-[14px]">{item.title || "Titre non lu"}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-faint tabular-nums">
+                    <span translate="no">{item.isbn ? formatIsbn(item.isbn) : "ISBN non lu"}</span>
+                    <span>×{item.quantity}</span>
+                    {item.reason ? <span className="text-warning">{item.reason}</span> : null}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="px-1 pt-2 text-[12px] text-muted">
+              Absents du carton : ils ne sont pas à scanner.
+            </p>
+          </section>
+        ) : null}
 
         {pending.length > 0 ? (
           <section>
@@ -173,7 +209,7 @@ function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) 
           <span className={`block truncate text-[14px] font-medium ${line.title ? "" : "text-danger"}`}>
             {line.title || "Titre manquant"}
           </span>
-          <span className="block truncate text-[13px] text-muted">{displayAuthor(line)}</span>
+          <span className="block truncate text-[13px] text-muted">{displayPublisher(line)}</span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={`font-mono text-[11px] tabular-nums ${line.isbn ? "text-faint" : "text-danger"}`}

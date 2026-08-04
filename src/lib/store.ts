@@ -4,13 +4,18 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { del, get, set } from "idb-keyval";
 
-import { consolidate, reconcile } from "./reconciler";
+import { consolidate, mergeNotDelivered, reconcile } from "./reconciler";
 import { prepareForUpload } from "./images";
 import { clearPages, savePage } from "./pages";
 import { normalizeIsbn } from "./isbn";
 import { expected, findExtraIndex, findLineIndex, isComplete, isReviewComplete } from "./order";
 import { emptySession } from "./types";
-import type { CartonSession, OcrPageResponse, OrderLine } from "./types";
+import type {
+  CartonSession,
+  ExtractedNotDelivered,
+  OcrPageResponse,
+  OrderLine,
+} from "./types";
 
 export type Phase = "idle" | "processing" | "review" | "scanning" | "summary";
 
@@ -129,9 +134,12 @@ export const useCarton = create<CartonState>()(
         });
 
         const perPage: OrderLine[][] = [];
+        const notDeliveredRaw: ExtractedNotDelivered[] = [];
         let supplier = "";
         let reference = "";
         let degraded = false;
+        let declaredQuantity = 0;
+        let declaredArticles = 0;
 
         try {
           for (let index = 0; index < files.length; index += 1) {
@@ -152,6 +160,24 @@ export const useCarton = create<CartonState>()(
             supplier = supplier || result.engineA.supplier || result.engineB?.supplier || "";
             reference = reference || result.engineA.reference || result.engineB?.reference || "";
 
+            // Les articles non servis viennent des deux moteurs : on prend
+            // l'union, `mergeNotDelivered` dédoublonne ensuite.
+            notDeliveredRaw.push(...result.engineA.notDelivered);
+            if (result.engineB) notDeliveredRaw.push(...result.engineB.notDelivered);
+
+            // Les totaux sont imprimés au niveau du document, souvent répétés
+            // sur chaque page : on retient le plus grand vu.
+            declaredQuantity = Math.max(
+              declaredQuantity,
+              result.engineA.declaredTotalQuantity,
+              result.engineB?.declaredTotalQuantity ?? 0,
+            );
+            declaredArticles = Math.max(
+              declaredArticles,
+              result.engineA.declaredTotalArticles,
+              result.engineB?.declaredTotalArticles ?? 0,
+            );
+
             perPage.push(reconcile(result.engineA, result.engineB, index));
           }
 
@@ -171,6 +197,9 @@ export const useCarton = create<CartonState>()(
               reference: reference.trim(),
               pageCount: files.length,
               lines,
+              notDelivered: mergeNotDelivered(notDeliveredRaw),
+              declaredTotalQuantity: declaredQuantity,
+              declaredTotalArticles: declaredArticles,
             },
             progress: null,
             degraded,
@@ -211,7 +240,7 @@ export const useCarton = create<CartonState>()(
           id: crypto.randomUUID(),
           isbn: "",
           title: "",
-          author: "",
+          publisher: "",
           quantityOrdered: 1,
           quantityDelivered: 1,
           pageIndex: 0,
@@ -361,7 +390,7 @@ export const useCarton = create<CartonState>()(
 function demoLine(
   isbn: string,
   title: string,
-  author: string,
+  publisher: string,
   quantityOrdered: number,
   quantityDelivered: number,
   pageIndex: number,
@@ -371,7 +400,7 @@ function demoLine(
     id: crypto.randomUUID(),
     isbn,
     title,
-    author,
+    publisher,
     quantityOrdered,
     quantityDelivered,
     pageIndex,
@@ -394,19 +423,19 @@ function makeDemoSession(): CartonSession {
     reference: "BC-DEMO-4871",
     pageCount: 2,
     lines: [
-      demoLine("9782070368228", "Le Petit Prince", "Antoine de Saint-Exupéry", 1, 1, 0),
-      demoLine("9782070612758", "L’Étranger", "Albert Camus", 3, 3, 0),
-      demoLine("9782021400984", "Les Misérables — tome I", "Victor Hugo", 5, 5, 0, [
+      demoLine("9782070368228", "COMTE DE MONTE CRISTO", "FOLIO", 1, 1, 0),
+      demoLine("9782070612758", "ARSENE LUPIN, GENTLEMAN", "GALLIMARD JEUNE", 3, 3, 0),
+      demoLine("9782021400984", "FIGURES DU FOU", "GALLIMARD", 5, 5, 0, [
         {
           id: crypto.randomUUID(),
           field: "title",
           kind: "conflict",
-          candidateA: "Les Misérables — tome I",
-          candidateB: "Les Misérables — tome 1",
+          candidateA: "FIGURES DU FOU",
+          candidateB: "FIGURE DU FOU",
         },
       ]),
       // Clé de contrôle volontairement fausse : le bon chiffre est 7.
-      demoLine("9782070782010", "Voyage au bout de la nuit", "Louis-Ferdinand Céline", 2, 2, 1, [
+      demoLine("9782070782010", "COFFRET LE PETIT NICOLAS", "GALLIMARD JEUNE", 2, 2, 1, [
         {
           id: crypto.randomUUID(),
           field: "isbn",
@@ -415,17 +444,30 @@ function makeDemoSession(): CartonSession {
           candidateB: "",
         },
       ]),
-      demoLine("9782213242583", "Madame Bovary", "Gustave Flaubert", 4, 2, 1),
-      demoLine("9782072678455", "La Peste", "Albert Camus", 1, 1, 1, [
+      demoLine("9782213242583", "MES MUSIQUES DU MONDE", "GALLIMARD JEUNE", 4, 2, 1),
+      demoLine("9782072678455", "PROTOCOLES MAPAR 2025", "MAPAR", 1, 1, 1, [
         {
           id: crypto.randomUUID(),
           field: "title",
           kind: "singleSource",
           candidateA: "— absente de la 1ʳᵉ lecture —",
-          candidateB: "La Peste",
+          candidateB: "PROTOCOLES MAPAR 2025",
         },
       ]),
-      demoLine("9782070179268", "Bel-Ami", "Guy de Maupassant", 6, 6, 1),
+      demoLine("9782070179268", "BERSERK T43 COLLECTOR", "GLENAT", 6, 6, 1),
     ],
+    // Reproduit la section « NON-SERVI DE VOTRE LIVRAISON » d'un bon SODIS.
+    notDelivered: [
+      {
+        id: crypto.randomUUID(),
+        isbn: "9781838662202",
+        title: "SEPTIME",
+        publisher: "PHAIDON GB",
+        quantity: 1,
+        reason: "MANQUANT PAS NOTE",
+      },
+    ],
+    declaredTotalQuantity: 22,
+    declaredTotalArticles: 7,
   };
 }

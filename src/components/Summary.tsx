@@ -134,6 +134,24 @@ export function Summary() {
           </section>
         ) : null}
 
+        {session.notDelivered.length > 0 ? (
+          <section>
+            <Label>Annoncés non livrés · {session.notDelivered.length}</Label>
+            <ul className="rounded-[10px] border border-border">
+              {session.notDelivered.map((item) => (
+                <li key={item.id} className="border-b border-border px-4 py-3 last:border-0">
+                  <p className="text-[14px]">{item.title || "Titre non lu"}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-faint tabular-nums">
+                    <span translate="no">{item.isbn ? formatIsbn(item.isbn) : "ISBN non lu"}</span>
+                    <span>×{item.quantity}</span>
+                    {item.reason ? <span className="text-warning">{item.reason}</span> : null}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         <Anomalies
           title="Reliquats annoncés au bon"
           lines={backorderedLines(session)}

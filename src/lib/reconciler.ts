@@ -1,4 +1,11 @@
-import type { ExtractedLine, ExtractedPage, FieldIssue, OrderLine } from "./types";
+import type {
+  ExtractedLine,
+  ExtractedNotDelivered,
+  ExtractedPage,
+  FieldIssue,
+  NotDeliveredItem,
+  OrderLine,
+} from "./types";
 import { isValidIsbn, normalizeIsbn } from "./isbn";
 
 /**
@@ -27,7 +34,7 @@ function makeLine(extracted: ExtractedLine, pageIndex: number): OrderLine {
     id: crypto.randomUUID(),
     isbn: normalizeIsbn(extracted.isbn),
     title: extracted.title.trim(),
-    author: extracted.author.trim(),
+    publisher: extracted.publisher.trim(),
     quantityOrdered: Math.max(extracted.quantityOrdered, 0),
     quantityDelivered: Math.max(extracted.quantityDelivered, 0),
     pageIndex,
@@ -121,8 +128,8 @@ function merge(a: ExtractedLine, b: ExtractedLine, pageIndex: number): OrderLine
   if (normalizeText(a.title) !== normalizeText(b.title)) {
     issues.push(issue("title", "conflict", a.title, b.title));
   }
-  if (normalizeText(a.author) !== normalizeText(b.author)) {
-    issues.push(issue("author", "conflict", a.author, b.author));
+  if (normalizeText(a.publisher) !== normalizeText(b.publisher)) {
+    issues.push(issue("publisher", "conflict", a.publisher, b.publisher));
   }
   if (a.quantityOrdered !== b.quantityOrdered) {
     issues.push(
@@ -189,6 +196,47 @@ export function reconcile(
       ...checksumIssues(line),
     ];
     result.push(line);
+  }
+
+  return result;
+}
+
+/**
+ * Rassemble les articles annoncés non livrés, vus par l'un ou l'autre moteur.
+ *
+ * On prend l'union et non l'intersection : rater un « non servi » ferait
+ * chercher à l'opérateur un livre absent du carton, alors qu'un doublon
+ * n'entraîne qu'une ligne de trop au récapitulatif. Le déséquilibre des
+ * conséquences dicte le choix.
+ */
+export function mergeNotDelivered(entries: ExtractedNotDelivered[]): NotDeliveredItem[] {
+  const result: NotDeliveredItem[] = [];
+
+  for (const entry of entries) {
+    const isbn = normalizeIsbn(entry.isbn);
+    const key = isbn || normalizeText(entry.title);
+    if (!key) continue;
+
+    const existing = result.find(
+      (item) => (normalizeIsbn(item.isbn) || normalizeText(item.title)) === key,
+    );
+
+    if (existing) {
+      existing.quantity = Math.max(existing.quantity, entry.quantity);
+      existing.title = existing.title || entry.title.trim();
+      existing.publisher = existing.publisher || entry.publisher.trim();
+      existing.reason = existing.reason || entry.reason.trim();
+      continue;
+    }
+
+    result.push({
+      id: crypto.randomUUID(),
+      isbn,
+      title: entry.title.trim(),
+      publisher: entry.publisher.trim(),
+      quantity: Math.max(entry.quantity, 0),
+      reason: entry.reason.trim(),
+    });
   }
 
   return result;

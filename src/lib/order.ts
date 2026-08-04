@@ -30,8 +30,8 @@ export function needsReview(line: OrderLine): boolean {
   return line.issues.length > 0;
 }
 
-export function displayAuthor(line: OrderLine): string {
-  return line.author.trim() || "Auteur inconnu";
+export function displayPublisher(line: OrderLine): string {
+  return line.publisher.trim() || "Éditeur inconnu";
 }
 
 export function pendingLines(session: CartonSession): OrderLine[] {
@@ -107,6 +107,25 @@ export function findLineIndex(session: CartonSession, isbn: string): number {
 export function findExtraIndex(session: CartonSession, isbn: string): number {
   const target = normalizeIsbn(isbn);
   return session.extras.findIndex((extra) => normalizeIsbn(extra.isbn) === target);
+}
+
+/** Somme des exemplaires lus sur le bordereau, hors articles non servis. */
+export function readTotalQuantity(session: CartonSession): number {
+  return session.lines.reduce((sum, line) => sum + line.quantityDelivered, 0);
+}
+
+/**
+ * Écart entre le total imprimé sur le bordereau et la somme des lignes lues.
+ *
+ * C'est le seul contrôle capable de détecter une ligne entière sautée par les
+ * deux moteurs à la fois — la double lecture ne voit rien quand ils omettent la
+ * même chose. Purement indicatif : sur un bordereau multi-échéances ou
+ * multi-colis, le total imprimé couvre souvent plus que les pages photographiées.
+ */
+export function declaredQuantityGap(session: CartonSession): number | null {
+  if (session.declaredTotalQuantity <= 0) return null;
+  const gap = session.declaredTotalQuantity - readTotalQuantity(session);
+  return gap > 0 ? gap : null;
 }
 
 export function sessionTitle(session: CartonSession): string {

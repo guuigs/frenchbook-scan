@@ -1,7 +1,7 @@
 import "server-only";
 
 import { EXTRACTION_INSTRUCTION, EXTRACTION_SCHEMA } from "@/lib/extraction-schema";
-import type { ExtractedLine, ExtractedPage } from "@/lib/types";
+import type { ExtractedLine, ExtractedNotDelivered, ExtractedPage } from "@/lib/types";
 
 /**
  * Accès à l'API Mistral. Ce module ne tourne que côté serveur : la clé vit
@@ -102,19 +102,34 @@ function toExtractedLine(raw: unknown): ExtractedLine {
   return {
     isbn: asString(record.isbn),
     title: asString(record.title),
-    author: asString(record.author),
+    publisher: asString(record.publisher),
     quantityOrdered: asInt(record.quantity_ordered),
     quantityDelivered: asInt(record.quantity_delivered),
+  };
+}
+
+function toNotDelivered(raw: unknown): ExtractedNotDelivered {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  return {
+    isbn: asString(record.isbn),
+    title: asString(record.title),
+    publisher: asString(record.publisher),
+    quantity: asInt(record.quantity),
+    reason: asString(record.reason),
   };
 }
 
 function toExtractedPage(raw: unknown): ExtractedPage {
   const record = (raw ?? {}) as Record<string, unknown>;
   const lines = Array.isArray(record.lines) ? record.lines : [];
+  const notDelivered = Array.isArray(record.not_delivered) ? record.not_delivered : [];
   return {
     supplier: asString(record.supplier),
     reference: asString(record.reference),
     lines: lines.map(toExtractedLine),
+    notDelivered: notDelivered.map(toNotDelivered),
+    declaredTotalQuantity: asInt(record.declared_total_quantity),
+    declaredTotalArticles: asInt(record.declared_total_articles),
   };
 }
 

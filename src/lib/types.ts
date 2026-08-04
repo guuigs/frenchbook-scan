@@ -1,14 +1,14 @@
 export type LineField =
   | "isbn"
   | "title"
-  | "author"
+  | "publisher"
   | "quantityOrdered"
   | "quantityDelivered";
 
 export const FIELD_LABELS: Record<LineField, string> = {
   isbn: "ISBN",
   title: "Titre",
-  author: "Auteur",
+  publisher: "Éditeur",
   quantityOrdered: "Qté commandée",
   quantityDelivered: "Qté livrée",
 };
@@ -49,7 +49,7 @@ export interface OrderLine {
   id: string;
   isbn: string;
   title: string;
-  author: string;
+  publisher: string;
   quantityOrdered: number;
   quantityDelivered: number;
   pageIndex: number;
@@ -66,6 +66,23 @@ export interface ExtraItem {
   damaged: number;
 }
 
+/**
+ * Article annoncé comme NON livré par le fournisseur, lu dans une section
+ * distincte du bordereau (« NON-SERVI DE VOTRE LIVRAISON », « MANQUANT »,
+ * « Reliquat »).
+ *
+ * Ces articles ne sont pas dans le carton : ils ne doivent jamais être scannés
+ * ni comptés comme manquants. Ils figurent au récapitulatif pour mémoire.
+ */
+export interface NotDeliveredItem {
+  id: string;
+  isbn: string;
+  title: string;
+  publisher: string;
+  quantity: number;
+  reason: string;
+}
+
 /** L'unité de travail : un carton, son bon de commande et son comptage. */
 export interface CartonSession {
   id: string;
@@ -75,21 +92,40 @@ export interface CartonSession {
   pageCount: number;
   lines: OrderLine[];
   extras: ExtraItem[];
+  notDelivered: NotDeliveredItem[];
+  /**
+   * Totaux imprimés sur le bordereau, quand il en porte. Servent de contrôle de
+   * cohérence : c'est le seul moyen de détecter une ligne entière sautée par
+   * les deux moteurs à la fois.
+   */
+  declaredTotalQuantity: number;
+  declaredTotalArticles: number;
 }
 
 /** Ligne brute renvoyée par un moteur d'extraction, avant rapprochement. */
 export interface ExtractedLine {
   isbn: string;
   title: string;
-  author: string;
+  publisher: string;
   quantityOrdered: number;
   quantityDelivered: number;
+}
+
+export interface ExtractedNotDelivered {
+  isbn: string;
+  title: string;
+  publisher: string;
+  quantity: number;
+  reason: string;
 }
 
 export interface ExtractedPage {
   supplier: string;
   reference: string;
   lines: ExtractedLine[];
+  notDelivered: ExtractedNotDelivered[];
+  declaredTotalQuantity: number;
+  declaredTotalArticles: number;
 }
 
 /** Réponse de la route serveur pour une page. */
@@ -109,5 +145,8 @@ export function emptySession(): CartonSession {
     pageCount: 0,
     lines: [],
     extras: [],
+    notDelivered: [],
+    declaredTotalQuantity: 0,
+    declaredTotalArticles: 0,
   };
 }

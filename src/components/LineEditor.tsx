@@ -28,7 +28,7 @@ export function LineEditor({
   const ids = useId();
   const [isbn, setIsbn] = useState(line.isbn);
   const [title, setTitle] = useState(line.title);
-  const [author, setAuthor] = useState(line.author);
+  const [publisher, setPublisher] = useState(line.publisher);
   const [ordered, setOrdered] = useState(line.quantityOrdered);
   const [delivered, setDelivered] = useState(line.quantityDelivered);
   const [page, setPage] = useState<string | null>(null);
@@ -82,7 +82,7 @@ export function LineEditor({
                 ...line,
                 isbn: normalizeIsbn(isbn),
                 title: title.trim(),
-                author: author.trim(),
+                publisher: publisher.trim(),
                 quantityOrdered: ordered,
                 quantityDelivered: delivered,
               })
@@ -159,16 +159,16 @@ export function LineEditor({
           </div>
 
           <div>
-            <label htmlFor={`${ids}-author`} className="mb-1.5 block text-[13px] text-muted">
-              Auteur
+            <label htmlFor={`${ids}-publisher`} className="mb-1.5 block text-[13px] text-muted">
+              Éditeur
             </label>
             <Input
-              id={`${ids}-author`}
-              value={author}
-              onChange={(event) => setAuthor(event.target.value)}
+              id={`${ids}-publisher`}
+              value={publisher}
+              onChange={(event) => setPublisher(event.target.value)}
               autoComplete="off"
             />
-            {candidates("author", setAuthor)}
+            {candidates("publisher", setPublisher)}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

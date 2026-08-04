@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { formatIsbn } from "@/lib/isbn";
 import { play } from "@/lib/feedback";
-import { displayAuthor, expected, isComplete } from "@/lib/order";
+import { displayPublisher, expected, isComplete } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
 import { Button, NumberPad, Note, Sheet } from "./ui";
 import { IconMinus, IconPlus } from "./icons";
@@ -44,7 +44,7 @@ export function QuantitySheet({
       header={
         <>
           <h2 className="truncate text-[15px] font-medium">{line.title}</h2>
-          <p className="truncate text-[13px] text-muted">{displayAuthor(line)}</p>
+          <p className="truncate text-[13px] text-muted">{displayPublisher(line)}</p>
           <p className="mt-0.5 font-mono text-[11px] text-faint tabular-nums" translate="no">
             {formatIsbn(line.isbn)}
           </p>

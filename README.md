@@ -40,9 +40,38 @@ place de l'opérateur : elle affiche les deux lectures côte à côte, avec la p
 de la page, et attend l'arbitrage. Le bouton de validation reste désactivé tant
 qu'il reste une ligne à vérifier.
 
+**Contrôle du total imprimé.** Quand le bordereau porte un total d'exemplaires
+(« Qté : 45 », « QUANTITE : 7 »), l'app le compare à la somme des lignes lues.
+C'est le seul contrôle capable de détecter une ligne entière sautée par les deux
+moteurs à la fois — la double lecture, elle, ne voit rien quand ils omettent la
+même chose. L'avertissement est indicatif et non bloquant : sur un bordereau
+multi-échéances, le total imprimé couvre souvent plus que les pages
+photographiées.
+
 Le prompt impose par ailleurs aux modèles de renvoyer une valeur vide plutôt que
 de compléter de mémoire — un ISBN plausible mais inventé serait le pire des cas,
 puisqu'il passerait la clé de contrôle.
+
+### Ce que le schéma tient compte des bordereaux réels
+
+Le schéma d'extraction est calé sur des bordereaux SODIS/Gallimard et CDL
+Hachette, dont les mises en page n'ont rien de commun :
+
+- **Pas de colonne « auteur ».** La seconde ligne de la cellule de libellé porte
+  l'**éditeur ou la collection** (`FOLIO`, `GALLIMARD JEUNE`, `GLENAT`,
+  `HACHETTE HEROES`). Demander un auteur produirait des divergences fantômes
+  entre les deux moteurs sur presque chaque ligne.
+- **Une seule colonne de quantité** le plus souvent (`Qté`, `QTE`). Le champ
+  « commandé » n'est renseigné que si une colonne distincte existe.
+- **Références internes du distributeur** mêlées aux ISBN dans la même colonne
+  (`20 3087 8`, `45 0505 0`). Le prompt les exclut explicitement, et la clé de
+  contrôle rattrape les cas où un moteur se trompe quand même.
+- **Section « NON-SERVI DE VOTRE LIVRAISON »** : ces articles ne sont pas dans
+  le carton. Ils sont extraits dans une liste séparée, jamais dans les lignes à
+  scanner. Sans cette distinction, l'opérateur chercherait un livre absent et
+  finirait avec un faux manque au récapitulatif.
+- **Annotations manuscrites** (cercles du réceptionnaire autour des quantités) :
+  le prompt impose de recopier l'imprimé, jamais le manuscrit.
 
 Si un seul des deux moteurs répond, la lecture n'est pas bloquée : elle est
 marquée dégradée, un bandeau l'annonce, et chaque ligne porte la mention

@@ -36,7 +36,7 @@ function escapeCsv(value: string): string {
 
 export function buildCsv(session: CartonSession): Blob {
   const rows = [
-    "ISBN;Titre;Auteur;Qte commandee;Qte annoncee livree;Qte comptee;Ecart;Abimes;Statut",
+    "ISBN;Titre;Editeur;Qte commandee;Qte livree;Qte comptee;Ecart;Abimes;Statut",
   ];
 
   for (const line of session.lines) {
@@ -45,7 +45,7 @@ export function buildCsv(session: CartonSession): Blob {
       [
         line.isbn,
         escapeCsv(line.title),
-        escapeCsv(line.author),
+        escapeCsv(line.publisher),
         line.quantityOrdered,
         line.quantityDelivered,
         line.counted,
@@ -61,6 +61,24 @@ export function buildCsv(session: CartonSession): Blob {
       [extra.isbn, "Non commande", "", 0, 0, extra.counted, `+${extra.counted}`, extra.damaged, "HORS BON"].join(
         ";",
       ),
+    );
+  }
+
+  // Les articles annoncés non livrés ne sont pas des manques constatés : ils
+  // portent leur propre statut pour ne pas se mêler au comptage physique.
+  for (const item of session.notDelivered) {
+    rows.push(
+      [
+        item.isbn,
+        escapeCsv(item.title),
+        escapeCsv(item.publisher),
+        item.quantity,
+        0,
+        0,
+        0,
+        0,
+        `NON SERVI${item.reason ? ` (${escapeCsv(item.reason)})` : ""}`,
+      ].join(";"),
     );
   }
 
@@ -162,6 +180,22 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
     for (const extra of session.extras) {
       newPageIfNeeded(16);
       write(`${formatIsbn(extra.isbn)}  ×${extra.counted}`, 9, "normal", "#c87f0a");
+    }
+  }
+
+  if (session.notDelivered.length > 0) {
+    y += 12;
+    newPageIfNeeded(40);
+    write("Annoncés non livrés par le fournisseur", 12, "bold");
+    for (const item of session.notDelivered) {
+      newPageIfNeeded(16);
+      const reason = item.reason ? ` — ${item.reason}` : "";
+      write(
+        `${formatIsbn(item.isbn)}  ${item.title}  ×${item.quantity}${reason}`,
+        9,
+        "normal",
+        "#555555",
+      );
     }
   }
 

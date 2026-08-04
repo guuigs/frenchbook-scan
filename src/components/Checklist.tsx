@@ -31,7 +31,7 @@ export function Checklist({ onClose }: { onClose: () => void }) {
       ? session.lines.filter(
           (line) =>
             normalizeText(line.title).includes(query) ||
-            normalizeText(line.author).includes(query) ||
+            normalizeText(line.publisher).includes(query) ||
             (digits.length > 0 && line.isbn.includes(digits)),
         )
       : session.lines;
@@ -73,7 +73,7 @@ export function Checklist({ onClose }: { onClose: () => void }) {
           aria-label="Rechercher un titre"
           type="search"
           autoComplete="off"
-          placeholder="Titre, auteur ou ISBN…"
+          placeholder="Titre, éditeur ou ISBN…"
         />
 
         {remaining.length > 0 ? (

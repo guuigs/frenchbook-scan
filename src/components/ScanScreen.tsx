@@ -7,7 +7,7 @@ import { useBarcodeScanner } from "@/lib/useBarcodeScanner";
 import { formatIsbn } from "@/lib/isbn";
 import { play, unlockAudio } from "@/lib/feedback";
 import {
-  displayAuthor,
+  displayPublisher,
   expected,
   isComplete,
   progress,
@@ -64,7 +64,7 @@ export function ScanScreen() {
     switch (outcome.kind) {
       case "autoConfirmed":
         play("success");
-        showFlash("ok", "1/1", outcome.line.title, displayAuthor(outcome.line));
+        showFlash("ok", "1/1", outcome.line.title, displayPublisher(outcome.line));
         break;
       case "needsQuantity":
       case "alreadyComplete":

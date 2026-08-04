@@ -9,8 +9,22 @@
 const MAX_DIMENSION = 2000;
 const JPEG_QUALITY = 0.72;
 
+/**
+ * Une photo prise à l'iPhone porte son orientation dans ses métadonnées EXIF
+ * plutôt que dans ses pixels. Sans cette option, un bon photographié en portrait
+ * partirait couché à l'OCR — et un tableau lu de travers se lit nettement moins
+ * bien.
+ */
+async function decode(file: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return createImageBitmap(file);
+  }
+}
+
 export async function prepareForUpload(file: Blob): Promise<string> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await decode(file);
 
   const longest = Math.max(bitmap.width, bitmap.height);
   const scale = longest > MAX_DIMENSION ? MAX_DIMENSION / longest : 1;
