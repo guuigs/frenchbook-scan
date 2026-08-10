@@ -35,8 +35,15 @@ interface LastScan {
   title: string;
 }
 
-/** Un code ignoré ne doit plus interrompre l'opérateur de tout le carton. */
-const IGNORE_MS = 5 * 60 * 1000;
+/**
+ * Un code ignoré est écarté une minute.
+ *
+ * Assez pour poser le livre de côté sans que la feuille se rouvre en boucle,
+ * assez peu pour qu'une fausse manœuvre se rattrape en le représentant. Un
+ * blocage jusqu'à la fin du carton rendrait l'erreur irrécupérable, puisque
+ * rien ne liste les codes écartés.
+ */
+const IGNORE_MS = 60 * 1000;
 
 /** Le temps de reposer le livre après avoir refermé une feuille. */
 const RESUME_MS = 2500;

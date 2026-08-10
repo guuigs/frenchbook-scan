@@ -61,7 +61,7 @@ export function UnknownCodeSheet({
         )}
 
         <p className="px-1 text-[12px] text-muted">
-          « Ignorer » écarte ce code jusqu’à la fin du carton.
+          « Ignorer » écarte ce code une minute. Représentez le livre pour revenir dessus.
         </p>
       </div>
     </Sheet>
