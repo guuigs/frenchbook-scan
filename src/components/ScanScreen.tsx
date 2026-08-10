@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useCarton } from "@/lib/store";
-import { useBarcodeScanner } from "@/lib/useBarcodeScanner";
+import { SCAN_REGION, useBarcodeScanner } from "@/lib/useBarcodeScanner";
 import { formatIsbn } from "@/lib/isbn";
 import { play, unlockAudio } from "@/lib/feedback";
 import {
@@ -23,7 +23,7 @@ import { Checklist } from "./Checklist";
 
 interface Flash {
   id: number;
-  tone: "ok" | "warning";
+  tone: "ok" | "alert";
   counter: string;
   title: string;
   subtitle: string;
@@ -105,7 +105,7 @@ export function ScanScreen() {
     if (!lastScan) return;
     const total = addDamaged(lastScan.id);
     play("attention");
-    showFlash("warning", `${total}`, lastScan.title, total > 1 ? "abîmés signalés" : "abîmé signalé");
+    showFlash("alert", `${total}`, lastScan.title, total > 1 ? "abîmés signalés" : "abîmé signalé");
   };
 
   return (
@@ -125,7 +125,12 @@ export function ScanScreen() {
       ) : (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-1/2 h-36 w-60 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border border-white/50"
+          className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[10px] border-2 border-white/70"
+          style={{
+            width: `${SCAN_REGION.width * 100}%`,
+            height: `${SCAN_REGION.height * 100}%`,
+            boxShadow: "0 0 0 9999px rgba(0,0,0,0.35)",
+          }}
         />
       )}
 
@@ -163,7 +168,7 @@ export function ScanScreen() {
           <button
             type="button"
             onClick={markDamaged}
-            className="flex w-full min-h-12 items-center justify-center gap-2 rounded-[10px] border border-[#f5a623]/60 bg-black/60 px-4 text-[14px] font-medium text-[#f5a623] backdrop-blur active:bg-[#f5a623]/20"
+            className="flex w-full min-h-12 items-center justify-center gap-2 rounded-[10px] border border-white/25 bg-black/70 px-4 text-[14px] font-medium text-white backdrop-blur active:bg-white/15"
           >
             <IconAlert />
             <span className="truncate">Signaler abîmé · {lastScan.title}</span>
@@ -195,7 +200,7 @@ export function ScanScreen() {
           key={flash.id}
           aria-live="polite"
           className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center text-white ${
-            flash.tone === "ok" ? "bg-[#0f7b34]/95" : "bg-[#a35200]/95"
+            flash.tone === "ok" ? "bg-[#0f7b34]/95" : "bg-[#a4232a]/95"
           }`}
         >
           {flash.tone === "ok" ? (
@@ -207,7 +212,7 @@ export function ScanScreen() {
             {flash.counter}
           </p>
           <p className="mt-5 line-clamp-2 text-[16px] font-medium">{flash.title}</p>
-          <p className="mt-1 truncate text-[13px] text-white/70">{flash.subtitle}</p>
+          <p className="mt-1 truncate text-[13px] text-white/85">{flash.subtitle}</p>
         </div>
       ) : null}
 
@@ -221,7 +226,7 @@ export function ScanScreen() {
             setPendingLine(null);
             suppress(pendingLine.isbn, RESUME_MS);
             showFlash(
-              count === expected(pendingLine) ? "ok" : "warning",
+              count === expected(pendingLine) ? "ok" : "alert",
               `${count}/${expected(pendingLine)}`,
               pendingLine.title,
               damaged > 0 ? `${damaged} abîmé${damaged > 1 ? "s" : ""}` : "Enregistré",
@@ -241,7 +246,7 @@ export function ScanScreen() {
             recordExtra(unknownCode);
             setUnknownCode(null);
             suppress(unknownCode, RESUME_MS);
-            showFlash("warning", "+1", "Hors bon de commande", formatIsbn(unknownCode));
+            showFlash("alert", "+1", "Hors bon de commande", formatIsbn(unknownCode));
           }}
           onIgnore={() => {
             setUnknownCode(null);

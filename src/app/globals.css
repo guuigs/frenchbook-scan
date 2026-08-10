@@ -14,16 +14,22 @@
   --border-strong: #d4d4d4;
   --fg: #0a0a0a;
   --muted: #666666;
-  --faint: #8f8f8f;
+  --faint: #727272;
 
-  --accent: #0070f3;
-  --accent-fg: #ffffff;
+  /*
+   * Interface monochrome. Deux couleurs seulement, et jamais en aplat : le vert
+   * dit « conforme », le rouge dit « à regarder ». Elles ne portent que du
+   * texte, une icône ou un filet — un bloc teinté attirerait l'œil sur la
+   * décoration plutôt que sur l'information.
+   */
   --success: #0f7b34;
-  --success-bg: #edf7ee;
-  --warning: #a35200;
-  --warning-bg: #fff8e6;
-  --danger: #d93036;
-  --danger-bg: #fff0f0;
+  --danger: #d22f34;
+
+  /*
+   * Seule exception : le fond du bouton de clôture définitive. Teinte fixe dans
+   * les deux thèmes, choisie pour porter du texte blanc à 6,7:1.
+   */
+  --danger-solid: #c1272d;
 
   color-scheme: light;
 }
@@ -37,16 +43,11 @@
     --border-strong: #3a3a3a;
     --fg: #ededed;
     --muted: #a1a1a1;
-    --faint: #7d7d7d;
+    --faint: #8b8b8b;
 
-    --accent: #3291ff;
-    --accent-fg: #ffffff;
     --success: #4cc38a;
-    --success-bg: #0d2818;
-    --warning: #f5a623;
-    --warning-bg: #2b1d00;
     --danger: #ff6166;
-    --danger-bg: #2d0f11;
+    --danger-solid: #c1272d;
 
     color-scheme: dark;
   }
@@ -62,14 +63,9 @@
   --color-muted: var(--muted);
   --color-faint: var(--faint);
 
-  --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
   --color-success: var(--success);
-  --color-success-bg: var(--success-bg);
-  --color-warning: var(--warning);
-  --color-warning-bg: var(--warning-bg);
   --color-danger: var(--danger);
-  --color-danger-bg: var(--danger-bg);
+  --color-danger-solid: var(--danger-solid);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

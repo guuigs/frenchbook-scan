@@ -36,7 +36,7 @@ export function QuantitySheet({
   const [padOpen, setPadOpen] = useState(false);
 
   const gap = count - target;
-  const colour = gap > 0 ? "text-warning" : gap < 0 ? "text-danger" : "text-success";
+  const colour = gap === 0 ? "text-success" : "text-danger";
 
   return (
     <Sheet
@@ -103,7 +103,7 @@ export function QuantitySheet({
         </div>
 
         {gap !== 0 ? (
-          <Note tone={gap > 0 ? "warning" : "danger"} aria-live="polite">
+          <Note tone="danger" aria-live="polite">
             {gap > 0 ? `${gap} en surplus` : `${-gap} manquant${-gap > 1 ? "s" : ""}`}
           </Note>
         ) : null}
@@ -111,18 +111,18 @@ export function QuantitySheet({
         {padOpen ? <NumberPad value={count} onChange={setCount} /> : null}
 
         {/*
-          Bordure ambre dès qu'un exemplaire est signalé : la ligne doit se
-          distinguer au premier coup d'œil du reste de la feuille, sinon
-          l'opérateur valide sans voir qu'il a marqué un abîmé.
+          Le filet passe au rouge dès qu'un exemplaire est signalé : la ligne
+          doit se distinguer au premier coup d'œil, sinon l'opérateur valide
+          sans voir qu'il a marqué un abîmé.
         */}
         <div
           className={`rounded-[10px] border px-4 py-3 ${
-            damaged > 0 ? "border-warning bg-warning-bg" : "border-border"
+            damaged > 0 ? "border-danger" : "border-border"
           }`}
         >
           <div className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-2 text-[14px] font-medium">
-              <IconAlert className={damaged > 0 ? "text-warning" : "text-faint"} />
+              <IconAlert className={damaged > 0 ? "text-danger" : "text-faint"} />
               Exemplaires abîmés
             </span>
             <span className="flex shrink-0 items-center gap-2">
@@ -137,7 +137,7 @@ export function QuantitySheet({
               </button>
               <span
                 className={`w-6 text-center font-mono text-[17px] font-medium tabular-nums ${
-                  damaged > 0 ? "text-warning" : "text-faint"
+                  damaged > 0 ? "text-danger" : "text-faint"
                 }`}
               >
                 {damaged}
@@ -158,7 +158,7 @@ export function QuantitySheet({
         </div>
 
         {context === "scan" && isComplete(line) ? (
-          <Note tone="warning">Titre déjà complet ({line.counted}/{target}).</Note>
+          <Note tone="danger">Titre déjà complet ({line.counted}/{target}).</Note>
         ) : null}
       </div>
     </Sheet>

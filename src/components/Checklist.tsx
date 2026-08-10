@@ -112,7 +112,7 @@ export function Checklist({ onClose }: { onClose: () => void }) {
                     {formatIsbn(extra.isbn)}
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="font-mono text-[13px] text-warning tabular-nums">
+                    <span className="font-mono text-[13px] text-danger tabular-nums">
                       ×{extra.counted}
                     </span>
                     <button
@@ -136,7 +136,7 @@ export function Checklist({ onClose }: { onClose: () => void }) {
 function Row({ line, onSelect }: { line: OrderLine; onSelect: () => void }) {
   const target = expected(line);
   const complete = isComplete(line);
-  const colour = surplus(line) > 0 ? "text-warning" : complete ? "text-success" : "text-faint";
+  const colour = surplus(line) > 0 ? "text-danger" : complete ? "text-success" : "text-faint";
 
   return (
     <li className="deferred-row border-b border-border last:border-0">
@@ -163,7 +163,7 @@ function Row({ line, onSelect }: { line: OrderLine; onSelect: () => void }) {
             {line.counted}/{target}
           </span>
           {line.damaged > 0 ? (
-            <span className="block font-mono text-[10px] text-warning">{line.damaged} abîmé</span>
+            <span className="block font-mono text-[10px] text-danger">{line.damaged} abîmé</span>
           ) : null}
         </span>
       </button>

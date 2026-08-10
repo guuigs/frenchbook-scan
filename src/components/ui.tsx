@@ -8,32 +8,23 @@ import type {
 } from "react";
 import { useEffect, useRef, useState } from "react";
 
-type Variant =
-  | "primary"
-  | "secondary"
-  | "secondaryDanger"
-  | "danger"
-  | "success"
-  | "warning"
-  | "ghost";
+type Variant = "primary" | "secondary" | "secondaryDanger" | "danger" | "ghost";
 
 /**
  * Le bouton primaire Geist inverse simplement le fond et le texte : noir sur
  * blanc en clair, blanc sur noir en sombre. Un seul bouton plein par écran,
- * tout le reste est bordé.
+ * tout le reste est bordé — y compris les actions à connotation d'alerte, dont
+ * la couleur se porte sur le texte.
  */
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    "bg-foreground text-background border-foreground active:opacity-80 disabled:opacity-40",
+  primary: "bg-foreground text-background border-foreground active:opacity-80 disabled:opacity-40",
   secondary:
     "bg-panel text-foreground border-border-strong hover:bg-subtle active:bg-subtle disabled:opacity-40",
-  // Action destructrice mais non primaire : le rouge porte sur le texte, pas
-  // sur le fond, pour ne pas concurrencer le bouton principal de l'écran.
   secondaryDanger:
-    "bg-panel text-danger border-border-strong hover:bg-danger-bg active:bg-danger-bg disabled:opacity-40",
-  danger: "bg-danger text-white border-danger active:opacity-85 disabled:opacity-40",
-  success: "bg-success text-white border-success active:opacity-85 disabled:opacity-40",
-  warning: "bg-warning text-white border-warning active:opacity-85 disabled:opacity-40",
+    "bg-panel text-danger border-border-strong hover:bg-subtle active:bg-subtle disabled:opacity-40",
+  // Seul aplat coloré de l'app, réservé à la clôture définitive : le geste est
+  // irréversible, il mérite de ne ressembler à aucun autre bouton.
+  danger: "bg-danger-solid text-white border-danger-solid active:opacity-85 disabled:opacity-40",
   ghost: "bg-transparent text-muted border-transparent active:text-foreground",
 };
 
@@ -79,12 +70,12 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   );
 }
 
-type NoteTone = "success" | "warning" | "danger" | "neutral";
+type NoteTone = "success" | "danger" | "neutral";
 
+/** Fond toujours neutre : seule la couleur du texte porte l'état. */
 const NOTE_TONES: Record<NoteTone, string> = {
-  success: "border-border bg-success-bg text-success",
-  warning: "border-border bg-warning-bg text-warning",
-  danger: "border-border bg-danger-bg text-danger",
+  success: "border-border bg-subtle text-success",
+  danger: "border-border bg-subtle text-danger",
   neutral: "border-border bg-subtle text-muted",
 };
 
@@ -105,7 +96,7 @@ export function Note({
   );
 }
 
-export function Tag({ children, tone = "warning" }: { children: ReactNode; tone?: NoteTone }) {
+export function Tag({ children, tone = "danger" }: { children: ReactNode; tone?: NoteTone }) {
   return (
     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${NOTE_TONES[tone]}`}>
       {children}
@@ -124,10 +115,10 @@ export function Row({
 }: {
   label: string;
   value: string | number;
-  tone?: "default" | "danger" | "warning";
+  tone?: "default" | "danger";
 }) {
   const colour =
-    tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : "text-foreground";
+    tone === "danger" ? "text-danger" : "text-foreground";
   return (
     <div className="flex items-center justify-between border-b border-border px-4 py-3 last:border-0">
       <span className="text-[14px] text-muted">{label}</span>

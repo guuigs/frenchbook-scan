@@ -69,7 +69,7 @@ export function Summary() {
       </header>
 
       <div className="flex-1 space-y-4 px-4 pb-6">
-        <Note tone={conform ? "success" : "warning"}>
+        <Note tone={conform ? "success" : "danger"}>
           {conform ? "Carton conforme" : "Écarts constatés"}
         </Note>
 
@@ -83,13 +83,13 @@ export function Summary() {
               <Row label="Manquants" value={totalMissing(session)} tone="danger" />
             ) : null}
             {totalSurplus(session) > 0 ? (
-              <Row label="Surplus" value={totalSurplus(session)} tone="warning" />
+              <Row label="Surplus" value={totalSurplus(session)} tone="danger" />
             ) : null}
             {totalDamaged(session) > 0 ? (
-              <Row label="Abîmés" value={totalDamaged(session)} tone="warning" />
+              <Row label="Abîmés" value={totalDamaged(session)} tone="danger" />
             ) : null}
             {totalExtras(session) > 0 ? (
-              <Row label="Hors bon" value={totalExtras(session)} tone="warning" />
+              <Row label="Hors bon" value={totalExtras(session)} tone="danger" />
             ) : null}
           </div>
         </section>
@@ -104,13 +104,13 @@ export function Summary() {
           title="Surplus"
           lines={surplusLines(session)}
           detail={(line) => `+${surplus(line)}`}
-          tone="text-warning"
+          tone="text-danger"
         />
         <Anomalies
           title="Abîmés"
           lines={damagedLines(session)}
           detail={(line) => `${line.damaged}`}
-          tone="text-warning"
+          tone="text-danger"
         />
 
         {session.extras.length > 0 ? (
@@ -125,7 +125,7 @@ export function Summary() {
                   <span className="font-mono text-[13px] tabular-nums" translate="no">
                     {formatIsbn(extra.isbn)}
                   </span>
-                  <span className="font-mono text-[13px] text-warning tabular-nums">
+                  <span className="font-mono text-[13px] text-danger tabular-nums">
                     ×{extra.counted}
                   </span>
                 </li>
@@ -144,7 +144,7 @@ export function Summary() {
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-faint tabular-nums">
                     <span translate="no">{item.isbn ? formatIsbn(item.isbn) : "ISBN non lu"}</span>
                     <span>×{item.quantity}</span>
-                    {item.reason ? <span className="text-warning">{item.reason}</span> : null}
+                    {item.reason ? <span className="text-danger">{item.reason}</span> : null}
                   </p>
                 </li>
               ))}

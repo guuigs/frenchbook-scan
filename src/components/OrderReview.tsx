@@ -69,10 +69,10 @@ export function OrderReview() {
       </header>
 
       <div className="flex-1 space-y-4 px-4 pb-6">
-        {degraded ? <Note tone="warning">Un seul moteur a répondu sur certaines pages.</Note> : null}
+        {degraded ? <Note tone="neutral">Un seul moteur a répondu sur certaines pages.</Note> : null}
 
         {gap !== null ? (
-          <Note tone="warning">
+          <Note tone="neutral">
             Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
             {readTotalQuantity(session)}.
           </Note>
@@ -88,7 +88,7 @@ export function OrderReview() {
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[11px] text-faint tabular-nums">
                     <span translate="no">{item.isbn ? formatIsbn(item.isbn) : "ISBN non lu"}</span>
                     <span>×{item.quantity}</span>
-                    {item.reason ? <span className="text-warning">{item.reason}</span> : null}
+                    {item.reason ? <span className="text-danger">{item.reason}</span> : null}
                   </p>
                 </li>
               ))}
@@ -127,7 +127,7 @@ export function OrderReview() {
           <span>
             {session.lines.length} titres · {totalExpected(session)} exemplaires
           </span>
-          <span className={clean ? "text-success" : "text-warning"}>
+          <span className={clean ? "text-success" : "text-danger"}>
             {clean ? "vérifié" : `${pending.length} à vérifier`}
           </span>
         </div>
@@ -201,7 +201,7 @@ function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) 
         onClick={onSelect}
         className="flex w-full items-start gap-3 bg-panel px-4 py-3 text-left hover:bg-subtle active:bg-subtle"
       >
-        <span className={`mt-0.5 shrink-0 ${flagged ? "text-warning" : "text-success"}`}>
+        <span className={`mt-0.5 shrink-0 ${flagged ? "text-danger" : "text-success"}`}>
           {flagged ? <IconAlert /> : <IconCheck />}
         </span>
 
