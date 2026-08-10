@@ -19,3 +19,4 @@ next-env.d.ts
 npm-debug.log*
 yarn-error.log*
 .DS_Store
+public/zxing_reader.wasm

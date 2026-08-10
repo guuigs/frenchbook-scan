@@ -71,11 +71,15 @@ export function App() {
 
   /*
    * Le poste de scan est préchargé dès l'écran de contrôle : quand l'opérateur
-   * valide le bon, la caméra doit démarrer sans temps mort, pas attendre le
-   * téléchargement du décodeur.
+   * valide le bon, la caméra doit démarrer sans temps mort. Le module de
+   * décodage pèse un mégaoctet et demande une centaine de millisecondes de
+   * compilation — autant les dépenser pendant qu'il relit son bon.
    */
   useEffect(() => {
-    if (phase === "review") void import("./ScanScreen");
+    if (phase === "review") {
+      void import("./ScanScreen");
+      void import("@/lib/decoder").then((module) => module.warmUpDecoder());
+    }
     if (phase === "scanning") void import("./Summary");
   }, [phase]);
 

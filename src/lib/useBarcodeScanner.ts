@@ -2,15 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { HTMLCanvasElementLuminanceSource } from "@zxing/browser";
-import {
-  BarcodeFormat,
-  BinaryBitmap,
-  DecodeHintType,
-  HybridBinarizer,
-  MultiFormatOneDReader,
-} from "@zxing/library";
-
+import { decodeCanvas, warmUpDecoder } from "./decoder";
 import { normalizeIsbn } from "./isbn";
 
 /**
@@ -27,18 +19,12 @@ import { normalizeIsbn } from "./isbn";
  * 2. `@zxing/browser` attend 500 ms entre deux tentatives et analyse tout le
  *    cadre. Le viseur affiché à l'écran n'avait donc aucun effet : viser ne
  *    servait à rien.
- * 3. Un livre tenu de travers présente un code-barres vertical, que ZXing ne
- *    lit jamais. Sa rotation interne, censée couvrir ce cas, est inopérante :
- *    mesurée, elle échoue toujours. On pivote donc le recadrage soi-même, ce
- *    qui le fait lire en 0,8 ms.
+ * 3. Un livre tenu de travers présente un code-barres incliné. Une passe de
+ *    lecture 1D tolère ±35°, mesuré ; au-delà il faut présenter l'image
+ *    autrement. Le moteur s'en charge en partie (`tryRotate`), et une passe
+ *    à 90° faite ici couvre le reste.
  *
- * `TRY_HARDER` est délibérément absent. Mesuré sur la bande visée : il fait
- * passer l'image sans code — le cas de loin le plus fréquent — de 25 ms à
- * 222 ms, sans rien lire de plus.
- *
- * Les deux orientations sont essayées en alternance, une par image. Le coût par
- * image reste celui d'un seul décodage, et un code est vu au pire à la seconde
- * image, soit moins de 70 ms après être entré dans le viseur.
+ * Le choix du moteur de décodage est traité dans `decoder.ts`.
  *
  * Le décodage est cadencé par `requestVideoFrameCallback` : une tentative par
  * image réellement produite par la caméra, ni plus ni moins.
@@ -103,15 +89,6 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
     let frameHandle: number | null = null;
     let timeoutHandle: number | null = null;
 
-    const hints = new Map<DecodeHintType, unknown>();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-    ]);
-    const reader = new MultiFormatOneDReader(hints);
-
     // `willReadFrequently` évite à chaque `getImageData` un aller-retour vers
     // le GPU : sur une boucle de lecture, la différence est mesurable.
     const canvas = document.createElement("canvas");
@@ -122,15 +99,14 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
     const turnedContext = turned.getContext("2d", { willReadFrequently: true });
 
     /**
-     * Un code-barres 1D se lit par balayage de lignes horizontales. Une passe
-     * tolère donc l'inclinaison tant qu'une ligne traverse les 95 modules sans
-     * sortir de la hauteur des barres : mesuré à ±35° sur un EAN de livre.
-     * Trois orientations couvrent le demi-tour complet sans angle mort, la
-     * diagonale comprise — c'est le seul angle qu'aucune des deux autres
-     * n'attrape.
+     * Le moteur balaie déjà l'image dans les deux sens (`tryRotate`), ce qui
+     * couvre jusqu'à 60° d'inclinaison, mesuré. Les deux orientations
+     * supplémentaires comblent le reste du demi-tour : la diagonale à 45°, que
+     * ni l'horizontale ni la verticale n'attrapent, et la verticale franche.
      */
     const ORIENTATIONS = [0, 90, 45] as const;
     let orientationIndex = 0;
+    let inFlight = false;
 
     /**
      * La vidéo est affichée en `object-cover` : une partie du cadre déborde de
@@ -164,8 +140,8 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
       };
     };
 
-    const attempt = () => {
-      if (stopped || pausedRef.current || !context) return;
+    const attempt = async () => {
+      if (stopped || pausedRef.current || !context || inFlight) return;
 
       const region = captureRegion();
       if (!region) return;
@@ -223,14 +199,14 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
         target = turned;
       }
 
+      inFlight = true;
       let text: string | null = null;
       try {
-        const source = new HTMLCanvasElementLuminanceSource(target);
-        text = reader.decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText();
-      } catch {
-        // Aucun code lisible sur cette image : le cas courant, pas une erreur.
-        return;
+        text = await decodeCanvas(target);
+      } finally {
+        inFlight = false;
       }
+      if (stopped || !text) return;
 
       const code = normalizeIsbn(text ?? "");
       if (!code) return;
@@ -245,7 +221,7 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
 
     const loop = () => {
       if (stopped) return;
-      attempt();
+      void attempt();
       schedule();
     };
 
@@ -261,6 +237,8 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
     const start = async () => {
       setStatus("starting");
       setMessage(null);
+      // Compile le module de décodage pendant l'ouverture de la caméra.
+      warmUpDecoder();
       try {
         // En portrait, `object-cover` ne laisse voir qu'une bande verticale du
         // cadre paysage de la caméra : demander 1080 plutôt que 720 augmente
