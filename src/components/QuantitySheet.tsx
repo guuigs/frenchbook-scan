@@ -7,7 +7,7 @@ import { play } from "@/lib/feedback";
 import { displayPublisher, expected, isComplete } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
 import { Button, NumberPad, Note, Sheet } from "./ui";
-import { IconMinus, IconPlus } from "./icons";
+import { IconAlert, IconMinus, IconPlus } from "./icons";
 
 /**
  * Confirmation de quantité pour un titre attendu en plusieurs exemplaires.
@@ -41,6 +41,7 @@ export function QuantitySheet({
   return (
     <Sheet
       open
+      onDismiss={onCancel}
       header={
         <>
           <h2 className="truncate text-[15px] font-medium">{line.title}</h2>
@@ -109,33 +110,51 @@ export function QuantitySheet({
 
         {padOpen ? <NumberPad value={count} onChange={setCount} /> : null}
 
-        <div className="flex items-center justify-between rounded-[10px] border border-border px-4 py-3">
-          <span className="text-[14px]">Abîmés</span>
-          <span className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDamaged((value) => Math.max(value - 1, 0))}
-              aria-label="Diminuer le nombre d’exemplaires abîmés"
-              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
-            >
-              <IconMinus className="h-3.5 w-3.5" />
-            </button>
-            <span
-              className={`w-6 text-center font-mono text-[15px] tabular-nums ${
-                damaged > 0 ? "text-warning" : "text-faint"
-              }`}
-            >
-              {damaged}
+        {/*
+          Bordure ambre dès qu'un exemplaire est signalé : la ligne doit se
+          distinguer au premier coup d'œil du reste de la feuille, sinon
+          l'opérateur valide sans voir qu'il a marqué un abîmé.
+        */}
+        <div
+          className={`rounded-[10px] border px-4 py-3 ${
+            damaged > 0 ? "border-warning bg-warning-bg" : "border-border"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-[14px] font-medium">
+              <IconAlert className={damaged > 0 ? "text-warning" : "text-faint"} />
+              Exemplaires abîmés
             </span>
-            <button
-              type="button"
-              onClick={() => setDamaged((value) => Math.min(value + 1, Math.max(count, 1)))}
-              aria-label="Augmenter le nombre d’exemplaires abîmés"
-              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-border hover:border-border-strong active:bg-subtle"
-            >
-              <IconPlus className="h-3.5 w-3.5" />
-            </button>
-          </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDamaged((value) => Math.max(value - 1, 0))}
+                aria-label="Diminuer le nombre d’exemplaires abîmés"
+                disabled={damaged === 0}
+                className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-border disabled:opacity-30 active:bg-subtle"
+              >
+                <IconMinus className="h-3.5 w-3.5" />
+              </button>
+              <span
+                className={`w-6 text-center font-mono text-[17px] font-medium tabular-nums ${
+                  damaged > 0 ? "text-warning" : "text-faint"
+                }`}
+              >
+                {damaged}
+              </span>
+              <button
+                type="button"
+                onClick={() => setDamaged((value) => Math.min(value + 1, Math.max(count, 1)))}
+                aria-label="Augmenter le nombre d’exemplaires abîmés"
+                className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-border active:bg-subtle"
+              >
+                <IconPlus className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+          <p className="mt-2 text-[12px] text-muted">
+            Reçus mais endommagés. Comptés dans la quantité, signalés au récapitulatif.
+          </p>
         </div>
 
         {context === "scan" && isComplete(line) ? (

@@ -6,7 +6,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
 } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Variant =
   | "primary"
@@ -146,21 +146,32 @@ export function ActionBar({ children }: { children: ReactNode }) {
 }
 
 /**
- * Feuille modale ancrée en bas. Volontairement non fermable par un geste :
- * chaque feuille attend une décision explicite, et un balayage accidentel
- * pendant un comptage ferait perdre le livre en cours.
+ * Feuille modale ancrée en bas, fermable en la faisant glisser vers le bas.
+ *
+ * Le petit trait en haut est une promesse : sur iOS il annonce un geste. Le
+ * laisser sans effet, c'est faire buter l'utilisateur contre une affordance
+ * morte. Le glissement n'est capté que sur l'en-tête, jamais sur le contenu —
+ * sinon le défilement d'une liste de deux cents lignes fermerait la feuille.
+ *
+ * `onDismiss` doit toujours pointer vers l'action neutre de la feuille
+ * (annuler, ignorer, fermer) : un geste ne doit jamais valider quoi que ce soit.
  */
 export function Sheet({
   open,
   header,
   children,
   footer,
+  onDismiss,
 }: {
   open: boolean;
   header?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  onDismiss?: () => void;
 }) {
+  const [drag, setDrag] = useState(0);
+  const startY = useRef<number | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const previous = document.body.style.overflow;
@@ -170,15 +181,65 @@ export function Sheet({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !onDismiss) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDismiss();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onDismiss]);
+
   if (!open) return null;
+
+  const draggable = Boolean(onDismiss);
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (!draggable) return;
+    startY.current = event.clientY;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: React.PointerEvent) => {
+    if (startY.current === null) return;
+    // Vers le haut, rien : la feuille est déjà à sa hauteur maximale.
+    setDrag(Math.max(event.clientY - startY.current, 0));
+  };
+
+  const onPointerUp = () => {
+    if (startY.current === null) return;
+    startY.current = null;
+    // 90 px : assez pour ne pas se déclencher sur un frôlement, assez peu pour
+    // rester atteignable au pouce sans changer de prise.
+    if (drag > 90) onDismiss?.();
+    setDrag(0);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" />
-      <div className="relative flex max-h-[92dvh] flex-col rounded-t-[14px] border-t border-border bg-background">
+      <div
+        className="relative flex max-h-[92dvh] flex-col rounded-t-[14px] border-t border-border bg-background"
+        style={{
+          transform: drag ? `translateY(${drag}px)` : undefined,
+          transition: startY.current === null ? "transform 200ms ease-out" : undefined,
+        }}
+      >
         {header ? (
-          <div className="shrink-0 border-b border-border px-4 pt-3 pb-4">
-            <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-border-strong" />
+          <div
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            className={`shrink-0 border-b border-border px-4 pt-3 pb-4 ${
+              draggable ? "cursor-grab touch-none active:cursor-grabbing" : ""
+            }`}
+          >
+            {draggable ? (
+              <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-border-strong" />
+            ) : (
+              <div className="h-1" />
+            )}
             {header}
           </div>
         ) : null}

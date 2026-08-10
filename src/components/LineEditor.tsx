@@ -74,6 +74,7 @@ export function LineEditor({
     <>
       <Sheet
         open
+        onDismiss={onCancel}
         header={<h2 className="text-[15px] font-medium">Vérifier la ligne</h2>}
         footer={
           <div className="space-y-2 pb-3">

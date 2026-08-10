@@ -57,6 +57,7 @@ interface CartonState {
 
   handleScan: (code: string) => ScanOutcome;
   setCount: (id: string, counted: number, damaged: number) => void;
+  addDamaged: (id: string) => number;
   recordExtra: (isbn: string) => void;
   removeExtra: (id: string) => void;
 
@@ -149,6 +150,32 @@ async function readPageOnce(dataUrl: string, doubleCheck: boolean): Promise<OcrP
   };
 }
 
+/**
+ * `Promise.all` sur toutes les pages saturerait le réseau et les quotas de
+ * l'API ; une boucle séquentielle fait attendre l'opérateur autant de fois
+ * qu'il y a de pages. On garde donc N tâches en vol, et l'ordre des résultats.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      results[index] = await task(items[index], index);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 export const useCarton = create<CartonState>()(
   persist(
     (setState, getState) => ({
@@ -175,30 +202,29 @@ export const useCarton = create<CartonState>()(
           progress: { pageIndex: 0, pageCount: files.length, stage: "Préparation…" },
         });
 
-        const perPage: OrderLine[][] = [];
         const notDeliveredRaw: ExtractedNotDelivered[] = [];
         let supplier = "";
         let reference = "";
         let degraded = false;
         let declaredQuantity = 0;
         let declaredArticles = 0;
+        let done = 0;
 
         try {
-          for (let index = 0; index < files.length; index += 1) {
-            setState({
-              progress: {
-                pageIndex: index,
-                pageCount: files.length,
-                stage: `Double lecture de la page ${index + 1}…`,
-              },
-            });
-
-            const dataUrl = await prepareForUpload(files[index]);
+          /*
+           * Les pages étaient lues l'une après l'autre : sur un bon de six
+           * pages, l'opérateur attendait six fois le temps d'un aller-retour
+           * Mistral. Elles sont indépendantes, donc on les traite en parallèle.
+           * La limite à trois évite de saturer la bande passante de l'entrepôt
+           * et de déclencher les quotas de l'API.
+           */
+          const perPage = await mapWithConcurrency(files, 3, async (file, index) => {
+            const dataUrl = await prepareForUpload(file);
             await savePage(index, dataUrl);
 
             const result = await readPage(dataUrl, true);
-            degraded = degraded || result.degraded;
 
+            degraded = degraded || result.degraded;
             supplier = supplier || result.engineA.supplier || result.engineB?.supplier || "";
             reference = reference || result.engineA.reference || result.engineB?.reference || "";
 
@@ -220,11 +246,19 @@ export const useCarton = create<CartonState>()(
               result.engineB?.declaredTotalArticles ?? 0,
             );
 
-            perPage.push(reconcile(result.engineA, result.engineB, index));
-          }
+            done += 1;
+            setState({
+              progress: {
+                pageIndex: done,
+                pageCount: files.length,
+                stage:
+                  done === files.length
+                    ? "Consolidation…"
+                    : `Lecture de ${files.length} pages en parallèle…`,
+              },
+            });
 
-          setState({
-            progress: { pageIndex: files.length, pageCount: files.length, stage: "Consolidation…" },
+            return reconcile(result.engineA, result.engineB, index);
           });
 
           const lines = consolidate(perPage);
@@ -341,6 +375,27 @@ export const useCarton = create<CartonState>()(
             ),
           },
         })),
+
+      /**
+       * Signale un exemplaire abîmé de plus sur une ligne, sans toucher au
+       * comptage : un livre abîmé est reçu, il est simplement à signaler.
+       * Plafonné au nombre compté, pour ne pas déclarer trois abîmés sur deux
+       * exemplaires reçus.
+       */
+      addDamaged: (id) => {
+        const line = getState().session.lines.find((entry) => entry.id === id);
+        if (!line) return 0;
+        const damaged = Math.min(line.damaged + 1, Math.max(line.counted, 1));
+        setState((state) => ({
+          session: {
+            ...state.session,
+            lines: state.session.lines.map((entry) =>
+              entry.id === id ? { ...entry, damaged } : entry,
+            ),
+          },
+        }));
+        return damaged;
+      },
 
       recordExtra: (isbn) =>
         setState((state) => {

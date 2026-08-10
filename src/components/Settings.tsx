@@ -19,6 +19,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
       open
+      onDismiss={onClose}
       header={<h2 className="text-[15px] font-medium">Réglages</h2>}
       footer={
         <div className="pb-3">

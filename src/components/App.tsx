@@ -1,16 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 
 import { useCarton } from "@/lib/store";
 import { setSoundEnabled } from "@/lib/feedback";
 import { Home } from "./Home";
 import { LoginGate } from "./LoginGate";
-import { OrderReview } from "./OrderReview";
 import { Processing } from "./Processing";
-import { ScanScreen } from "./ScanScreen";
-import { Settings } from "./Settings";
-import { Summary } from "./Summary";
+
+/*
+ * Les écrans lourds ne sont pas chargés au démarrage.
+ *
+ * Le décodeur ZXing pèse à lui seul plusieurs centaines de kilooctets et ne
+ * sert qu'au poste de scan ; jsPDF, qu'au récapitulatif. Les embarquer dans le
+ * bundle initial retardait le premier écran sur le réseau d'un entrepôt.
+ */
+const OrderReview = dynamic(() => import("./OrderReview").then((m) => m.OrderReview), {
+  ssr: false,
+});
+const ScanScreen = dynamic(() => import("./ScanScreen").then((m) => m.ScanScreen), { ssr: false });
+const Summary = dynamic(() => import("./Summary").then((m) => m.Summary), { ssr: false });
+const Settings = dynamic(() => import("./Settings").then((m) => m.Settings), { ssr: false });
 
 type Auth = "checking" | "anonymous" | "authorized";
 
@@ -58,10 +69,20 @@ export function App() {
     setSoundEnabled(soundEnabled);
   }, [soundEnabled]);
 
+  /*
+   * Le poste de scan est préchargé dès l'écran de contrôle : quand l'opérateur
+   * valide le bon, la caméra doit démarrer sans temps mort, pas attendre le
+   * téléchargement du décodeur.
+   */
+  useEffect(() => {
+    if (phase === "review") void import("./ScanScreen");
+    if (phase === "scanning") void import("./Summary");
+  }, [phase]);
+
   if (auth === "checking" || !hydrated) {
     return (
       <main className="flex min-h-dvh items-center justify-center">
-        <p className="text-sm text-slate-400">Chargement…</p>
+        <p className="text-[13px] text-faint">Chargement…</p>
       </main>
     );
   }

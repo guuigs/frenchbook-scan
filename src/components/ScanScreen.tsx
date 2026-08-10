@@ -16,7 +16,7 @@ import {
   totalExpected,
 } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
-import { IconCheck, IconChevronRight, IconList } from "./icons";
+import { IconAlert, IconCheck, IconChevronRight, IconList } from "./icons";
 import { QuantitySheet } from "./QuantitySheet";
 import { UnknownCodeSheet } from "./UnknownCodeSheet";
 import { Checklist } from "./Checklist";
@@ -29,17 +29,23 @@ interface Flash {
   subtitle: string;
 }
 
-/**
- * Poste de scan : la caméra ne s'arrête jamais.
- *
- * Safari n'autorise aucune vibration. La confirmation repose donc sur le son et
- * sur un voile de couleur plein écran, assez large pour être perçu du coin de
- * l'œil sans fixer l'écran.
- */
+/** Le dernier livre compté, cible du bouton « Abîmé ». */
+interface LastScan {
+  id: string;
+  title: string;
+}
+
+/** Un code ignoré ne doit plus interrompre l'opérateur de tout le carton. */
+const IGNORE_MS = 5 * 60 * 1000;
+
+/** Le temps de reposer le livre après avoir refermé une feuille. */
+const RESUME_MS = 2500;
+
 export function ScanScreen() {
   const session = useCarton((state) => state.session);
   const handleScan = useCarton((state) => state.handleScan);
   const setCount = useCarton((state) => state.setCount);
+  const addDamaged = useCarton((state) => state.addDamaged);
   const recordExtra = useCarton((state) => state.recordExtra);
   const requestSummary = useCarton((state) => state.requestSummary);
 
@@ -50,13 +56,14 @@ export function ScanScreen() {
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [showChecklist, setShowChecklist] = useState(false);
   const [flash, setFlash] = useState<Flash | null>(null);
+  const [lastScan, setLastScan] = useState<LastScan | null>(null);
 
   const paused = pendingLine !== null || unknownCode !== null || showChecklist;
 
   const showFlash = (tone: Flash["tone"], counter: string, title: string, subtitle: string) => {
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     setFlash({ id: Date.now(), tone, counter, title, subtitle });
-    flashTimer.current = window.setTimeout(() => setFlash(null), 1200);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 1100);
   };
 
   const onCode = (code: string) => {
@@ -64,6 +71,7 @@ export function ScanScreen() {
     switch (outcome.kind) {
       case "autoConfirmed":
         play("success");
+        setLastScan({ id: outcome.line.id, title: outcome.line.title });
         showFlash("ok", "1/1", outcome.line.title, displayPublisher(outcome.line));
         break;
       case "needsQuantity":
@@ -78,7 +86,7 @@ export function ScanScreen() {
     }
   };
 
-  const { status, message, clearDebounce } = useBarcodeScanner({ videoRef, onCode, paused });
+  const { status, message, suppress } = useBarcodeScanner({ videoRef, onCode, paused });
 
   useEffect(() => {
     unlockAudio();
@@ -92,6 +100,13 @@ export function ScanScreen() {
   const counted = totalCounted(session);
   const target = totalExpected(session);
   const remaining = session.lines.filter((line) => !isComplete(line)).length;
+
+  const markDamaged = () => {
+    if (!lastScan) return;
+    const total = addDamaged(lastScan.id);
+    play("attention");
+    showFlash("warning", `${total}`, lastScan.title, total > 1 ? "abîmés signalés" : "abîmé signalé");
+  };
 
   return (
     <main className="fixed inset-0 flex flex-col bg-black text-white">
@@ -137,23 +152,42 @@ export function ScanScreen() {
 
       <div className="flex-1" />
 
-      <footer className="pb-safe relative flex items-center justify-between gap-3 px-3">
-        <button
-          type="button"
-          onClick={() => setShowChecklist(true)}
-          className="flex min-h-11 items-center gap-2 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] backdrop-blur active:bg-black/70"
-        >
-          <IconList />
-          Liste
-        </button>
-        <button
-          type="button"
-          onClick={requestSummary}
-          className="flex min-h-11 items-center gap-1.5 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] font-medium backdrop-blur active:bg-black/70"
-        >
-          Fin du carton
-          <IconChevronRight />
-        </button>
+      {/*
+        Le bouton « Abîmé » porte sur le dernier livre scanné, et affiche son
+        titre : c'est le seul moment où l'opérateur a l'exemplaire en main.
+        Sans lui, un titre attendu en un seul exemplaire — validé d'office sans
+        écran de saisie — ne pouvait pas être signalé du tout.
+      */}
+      <footer className="pb-safe relative space-y-2 px-3">
+        {lastScan ? (
+          <button
+            type="button"
+            onClick={markDamaged}
+            className="flex w-full min-h-12 items-center justify-center gap-2 rounded-[10px] border border-[#f5a623]/60 bg-black/60 px-4 text-[14px] font-medium text-[#f5a623] backdrop-blur active:bg-[#f5a623]/20"
+          >
+            <IconAlert />
+            <span className="truncate">Signaler abîmé · {lastScan.title}</span>
+          </button>
+        ) : null}
+
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setShowChecklist(true)}
+            className="flex min-h-11 items-center gap-2 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] backdrop-blur active:bg-black/70"
+          >
+            <IconList />
+            Liste
+          </button>
+          <button
+            type="button"
+            onClick={requestSummary}
+            className="flex min-h-11 items-center gap-1.5 rounded-[8px] border border-white/15 bg-black/55 px-3.5 text-[14px] font-medium backdrop-blur active:bg-black/70"
+          >
+            Fin du carton
+            <IconChevronRight />
+          </button>
+        </div>
       </footer>
 
       {flash ? (
@@ -164,7 +198,11 @@ export function ScanScreen() {
             flash.tone === "ok" ? "bg-[#0f7b34]/95" : "bg-[#a35200]/95"
           }`}
         >
-          <IconCheck className="h-12 w-12" />
+          {flash.tone === "ok" ? (
+            <IconCheck className="h-12 w-12" />
+          ) : (
+            <IconAlert className="h-12 w-12" />
+          )}
           <p className="mt-3 font-mono text-[44px] leading-none font-medium tabular-nums">
             {flash.counter}
           </p>
@@ -179,11 +217,11 @@ export function ScanScreen() {
           context="scan"
           onConfirm={(count, damaged) => {
             setCount(pendingLine.id, count, damaged);
-            const done = count === expected(pendingLine);
+            setLastScan({ id: pendingLine.id, title: pendingLine.title });
             setPendingLine(null);
-            clearDebounce();
+            suppress(pendingLine.isbn, RESUME_MS);
             showFlash(
-              done ? "ok" : "warning",
+              count === expected(pendingLine) ? "ok" : "warning",
               `${count}/${expected(pendingLine)}`,
               pendingLine.title,
               damaged > 0 ? `${damaged} abîmé${damaged > 1 ? "s" : ""}` : "Enregistré",
@@ -191,7 +229,7 @@ export function ScanScreen() {
           }}
           onCancel={() => {
             setPendingLine(null);
-            clearDebounce();
+            suppress(pendingLine.isbn, RESUME_MS);
           }}
         />
       ) : null}
@@ -202,24 +240,19 @@ export function ScanScreen() {
           onRecord={() => {
             recordExtra(unknownCode);
             setUnknownCode(null);
-            clearDebounce();
+            suppress(unknownCode, RESUME_MS);
             showFlash("warning", "+1", "Hors bon de commande", formatIsbn(unknownCode));
           }}
           onIgnore={() => {
             setUnknownCode(null);
-            clearDebounce();
+            // Ignoré une fois, ignoré pour le reste du carton : sans cela, le
+            // livre encore devant l'objectif rouvre la feuille en boucle.
+            suppress(unknownCode, IGNORE_MS);
           }}
         />
       ) : null}
 
-      {showChecklist ? (
-        <Checklist
-          onClose={() => {
-            setShowChecklist(false);
-            clearDebounce();
-          }}
-        />
-      ) : null}
+      {showChecklist ? <Checklist onClose={() => setShowChecklist(false)} /> : null}
     </main>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
+import { BrowserMultiFormatOneDReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
 import { normalizeIsbn } from "./isbn";
@@ -11,18 +11,22 @@ import { normalizeIsbn } from "./isbn";
  * Lecture continue des codes-barres livre.
  *
  * Safari n'implémente pas l'API `BarcodeDetector` du navigateur : on décode
- * avec ZXing, la référence open source du domaine. On restreint les formats
- * aux symbologies du livre — moins de formats à tester, plus d'images
- * analysées par seconde.
+ * avec ZXing, la référence open source du domaine.
+ *
+ * Deux réglages font l'essentiel de la réactivité :
+ *
+ * - `BrowserMultiFormatOneDReader` au lieu du lecteur multi-format complet. Un
+ *   livre ne porte qu'un code-barres linéaire ; inutile de chercher aussi des
+ *   QR, DataMatrix, Aztec et PDF417 à chaque image, ce qui représente le gros
+ *   du temps de décodage.
+ * - `delayBetweenScanAttempts` à 60 ms au lieu des 500 ms par défaut de la
+ *   bibliothèque. Par défaut, ZXing ne tente le décodage que deux fois par
+ *   seconde : c'est ce qui donnait l'impression que la caméra ne voyait rien.
  */
 
 export type ScannerStatus = "idle" | "starting" | "running" | "denied" | "error";
 
-/**
- * La caméra voit le même code-barres une vingtaine de fois par seconde tant
- * que le livre est devant l'objectif : sans ce verrou, un exemplaire unique
- * serait compté en rafale.
- */
+/** Anti-rebond par défaut : la caméra voit le même code des dizaines de fois. */
 const DEBOUNCE_MS = 2000;
 
 interface Options {
@@ -39,15 +43,23 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
 
   const pausedRef = useRef(paused);
   const onCodeRef = useRef(onCode);
-  const lastCodeRef = useRef<{ code: string; at: number } | null>(null);
+  const suppressedRef = useRef(new Map<string, number>());
 
   pausedRef.current = paused;
   onCodeRef.current = onCode;
 
-  /** Rouvre immédiatement la lecture d'un code qu'on vient de traiter. */
-  const clearDebounce = () => {
-    lastCodeRef.current = null;
-  };
+  /**
+   * Ignore un code jusqu'à l'échéance donnée.
+   *
+   * Indispensable à la fermeture d'une feuille : l'opérateur a encore le livre
+   * devant l'objectif, et sans ce délai remis à zéro **au moment où il rend la
+   * main**, le même code redéclenche aussitôt la même feuille — l'app paraît
+   * bloquée en boucle.
+   */
+  const suppress = useCallback((code: string, ms: number = DEBOUNCE_MS) => {
+    const key = normalizeIsbn(code);
+    if (key) suppressedRef.current.set(key, Date.now() + ms);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -66,7 +78,10 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
       BarcodeFormat.UPC_E,
     ]);
 
-    const reader = new BrowserMultiFormatReader(hints);
+    const reader = new BrowserMultiFormatOneDReader(hints, {
+      delayBetweenScanAttempts: 60,
+      delayBetweenScanSuccess: 60,
+    });
 
     const start = async () => {
       setStatus("starting");
@@ -88,10 +103,10 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
             if (!code) return;
 
             const now = Date.now();
-            const last = lastCodeRef.current;
-            if (last && last.code === code && now - last.at < DEBOUNCE_MS) return;
+            const until = suppressedRef.current.get(code);
+            if (until !== undefined && now < until) return;
 
-            lastCodeRef.current = { code, at: now };
+            suppressedRef.current.set(code, now + DEBOUNCE_MS);
             onCodeRef.current(code);
           },
         );
@@ -128,5 +143,5 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
     };
   }, [enabled, videoRef]);
 
-  return { status, message, clearDebounce };
+  return { status, message, suppress };
 }

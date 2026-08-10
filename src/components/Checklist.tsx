@@ -59,6 +59,7 @@ export function Checklist({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
       open
+      onDismiss={onClose}
       header={<h2 className="text-[15px] font-medium">Avancement</h2>}
       footer={
         <div className="pb-3">

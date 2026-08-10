@@ -1,12 +1,16 @@
 "use client";
 
-import { formatIsbn } from "@/lib/isbn";
-import { Button, Sheet } from "./ui";
+import { formatIsbn, isValidIsbn } from "@/lib/isbn";
+import { Button, Note, Sheet } from "./ui";
+import { IconAlert } from "./icons";
 
 /**
- * Un code lu ne figure pas au bon de commande : soit le fournisseur a glissé un
- * livre non commandé, soit l'ISBN a été mal lu sur le papier. On ne tranche pas
- * à la place de l'opérateur.
+ * Un code lu ne figure pas au bon de livraison.
+ *
+ * Trois causes, toutes ordinaires : le fournisseur a glissé un livre non
+ * commandé, l'ISBN a été mal lu sur le papier, ou l'objectif a attrapé un
+ * code-barres qui n'est pas celui d'un livre. On ne tranche pas à la place de
+ * l'opérateur — mais on lui dit ce qu'on a lu et ce qu'on en pense.
  */
 export function UnknownCodeSheet({
   code,
@@ -17,27 +21,49 @@ export function UnknownCodeSheet({
   onRecord: () => void;
   onIgnore: () => void;
 }) {
+  const looksLikeBook = isValidIsbn(code) && code.startsWith("97");
+
   return (
     <Sheet
       open
-      header={<h2 className="text-[15px] font-medium">Livre absent du bon</h2>}
+      onDismiss={onIgnore}
+      header={
+        <div className="flex items-center gap-2">
+          <IconAlert className="h-4 w-4 text-warning" />
+          <h2 className="text-[15px] font-medium">Absent du bon</h2>
+        </div>
+      }
       footer={
         <div className="space-y-2 pb-3">
           <Button variant="warning" onClick={onRecord}>
             Enregistrer hors commande
           </Button>
           <Button variant="secondary" onClick={onIgnore}>
-            Ignorer
+            Ignorer ce livre
           </Button>
         </div>
       }
     >
-      <p
-        className="py-4 text-center font-mono text-[20px] tabular-nums select-all"
-        translate="no"
-      >
-        {formatIsbn(code)}
-      </p>
+      <div className="space-y-3">
+        <p
+          className="rounded-[10px] border border-border bg-subtle py-4 text-center font-mono text-[22px] tabular-nums select-all"
+          translate="no"
+        >
+          {code ? formatIsbn(code) : "code illisible"}
+        </p>
+
+        {looksLikeBook ? (
+          <Note tone="neutral">Ce livre ne figure sur aucune ligne du bon.</Note>
+        ) : (
+          <Note tone="warning">
+            Ce code n’a pas la forme d’un ISBN. Vérifiez que c’est bien le code-barres du livre.
+          </Note>
+        )}
+
+        <p className="px-1 text-[12px] text-muted">
+          « Ignorer » écarte ce code jusqu’à la fin du carton.
+        </p>
+      </div>
     </Sheet>
   );
 }
