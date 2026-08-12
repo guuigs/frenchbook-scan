@@ -85,6 +85,7 @@ const ISSUE_KINDS: IssueKind[] = [
   "merged",
   "missing",
   "alignment",
+  "duplicateTitle",
   "autoFixed",
 ];
 
@@ -105,7 +106,9 @@ const BLOCKING_FIELDS: LineField[] = ["isbn", "quantityOrdered", "quantityDelive
 
 function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
   if (kind === "autoFixed" || kind === "singleSource" || kind === "merged") return "info";
-  if (kind === "alignment") return "blocking";
+  // Liens cassés entre les colonnes, et non divergences d'orthographe.
+  if (kind === "alignment" || kind === "duplicateTitle") return "blocking";
+  if (kind === "missing" && field === "title") return "blocking";
   return BLOCKING_FIELDS.includes(field) ? "blocking" : "info";
 }
 

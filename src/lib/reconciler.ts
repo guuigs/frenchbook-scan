@@ -92,10 +92,11 @@ function checksumIssues(line: OrderLine): FieldIssue[] {
     issues.push(issue("isbn", "invalidChecksum", "blocking", line.isbn, ""));
   }
 
-  // Un titre manquant gêne la lecture de l'écran de scan, mais ne fausse ni
-  // l'identification du livre ni le comptage : signalé, pas bloquant.
+  // Tout ISBN doit porter un titre. Sans lui, l'écran de scan annonce un livre
+  // que l'opérateur ne peut pas reconnaître, et la ligne devient impossible à
+  // retrouver sur le papier en cas de litige.
   if (!line.title) {
-    issues.push(issue("title", "missing", "info", "", ""));
+    issues.push(issue("title", "missing", "blocking", "", ""));
   }
 
   if (line.quantityOrdered === 0 && line.quantityDelivered === 0) {
@@ -515,16 +516,68 @@ export function consolidate(pages: OrderLine[][]): OrderLine[] {
         ),
     );
 
+    /*
+     * Deux lignes de même ISBN mais de titres sans rapport, ce n'est plus un
+     * doublon : c'est le même code appelé sur deux sujets différents, donc un
+     * rattachement faux d'un côté ou de l'autre. La fusion silencieuse ferait
+     * disparaître le livre perdant sans que personne ne le sache.
+     */
+    const titlesDiffer =
+      target.title &&
+      line.title &&
+      similarity(normalizeText(target.title), normalizeText(line.title)) < ALIGNMENT_THRESHOLD;
+
     target.issues.push(
-      issue(
-        "quantityDelivered",
-        "merged",
-        "info",
-        String(target.quantityDelivered),
-        "2 lignes pour un même ISBN",
-      ),
+      titlesDiffer
+        ? issue("title", "alignment", "blocking", target.title, line.title)
+        : issue(
+            "quantityDelivered",
+            "merged",
+            "info",
+            String(target.quantityDelivered),
+            "2 lignes pour un même ISBN",
+          ),
     );
   }
 
   return result;
+}
+
+/**
+ * Contrôles portant sur le bon entier, une fois toutes les pages réunies.
+ *
+ * Ils ne regardent pas comment un champ a été lu mais comment les colonnes se
+ * répondent : chaque ISBN doit avoir son titre, et chaque titre son seul ISBN.
+ * Un titre qui se retrouve sur deux ISBN est la trace d'un bloc décalé — le
+ * libellé a été recopié deux fois pendant qu'un autre perdait le sien. Rien
+ * dans la lecture d'une ligne prise isolément ne peut le révéler.
+ */
+export function auditStructure(lines: OrderLine[]): OrderLine[] {
+  const byTitle = new Map<string, OrderLine[]>();
+
+  for (const line of lines) {
+    // Égalité stricte des titres normalisés, jamais une similarité : « DRUUNA
+    // T01 » et « DRUUNA T02 » se ressemblent à 90 % et sont deux livres.
+    const key = normalizeText(line.title);
+    if (!key) continue;
+    const group = byTitle.get(key);
+    if (group) group.push(line);
+    else byTitle.set(key, [line]);
+  }
+
+  for (const group of byTitle.values()) {
+    if (group.length < 2) continue;
+    const isbns = Array.from(
+      new Set(group.map((line) => normalizeIsbn(line.isbn)).filter(Boolean)),
+    );
+    if (isbns.length < 2) continue;
+
+    for (const line of group) {
+      line.issues.push(
+        issue("title", "duplicateTitle", "blocking", line.title, isbns.join(" / ")),
+      );
+    }
+  }
+
+  return lines;
 }

@@ -54,6 +54,21 @@ de la file d'attente — ils ne changent rien à ce qu'il y a à compter. Une fi
 qui contient tout ne se distingue pas d'une file vide : on finit par tout valider
 sans regarder.
 
+**Les colonnes doivent se répondre.** Trois contrôles ne portent pas sur la
+lecture d'un champ mais sur le lien entre l'ISBN et le titre — le lien qui décide
+quel livre sera décompté sur quelle ligne. Ceux-là bloquent, alors qu'une simple
+divergence d'orthographe ne bloque pas :
+
+- **tout ISBN a un titre.** Sans lui, l'écran de scan annonce un livre que
+  l'opérateur ne peut pas reconnaître ;
+- **un titre ne porte qu'un ISBN.** Le même libellé sur deux codes, c'est un
+  bloc recopié pendant qu'un autre perdait le sien ;
+- **un ISBN ne porte qu'un sujet.** Deux lignes de même code aux titres sans
+  rapport, ce n'est pas un doublon : c'est un rattachement faux d'un côté.
+
+La comparaison des titres se fait à l'identique, jamais par ressemblance :
+`DRUUNA T01` et `DRUUNA T02` se ressemblent à 90 % et sont deux livres.
+
 **Un ISBN, une ligne.** Le même ISBN vu deux fois n'est pas une commande de deux
 lots : c'est le même bloc du bordereau lu deux fois. Les lignes sont réunies sans
 rien demander, et l'app garde **la plus grande** quantité des deux, jamais leur
@@ -156,12 +171,34 @@ Quatre mesures se cumulent contre ça :
 3. **Le contrôle d'alignement.** Quand les deux moteurs désignent le même bloc —
    même référence ou même ISBN — mais lui donnent deux titres qui n'ont rien à
    voir, ce n'est pas un titre mal lu, c'est un code rattaché au mauvais libellé.
-   La ligne est signalée « ISBN/titre décalés » et bloque, avec un rappel de la
+   La ligne est signalée « ISBN sur 2 titres » et bloque, avec un rappel de la
    structure en deux lignes dans l'écran d'arbitrage.
 4. **Le compte des références imprimé en pied de bordereau** (« ARTICLES: 19 »)
    est comparé au nombre de lignes lues. Plus de lignes que de références annoncées,
    c'est le signe qu'un complément est passé pour un titre — le seul contrôle qui
    attrape le cas où les deux moteurs se trompent pareil.
+
+## Ce que la caméra lit — et ce qu'elle doit ignorer
+
+Un livre validé sans feuille de saisie ne met pas l'écran en pause : l'opérateur
+enchaîne. Mais pendant qu'il retire le livre du champ, l'objectif balaie la pile
+posée à côté. L'écartement d'un code après lecture n'y changeait rien — il ne
+couvre que *ce* code, et ce qui passe ensuite en est un autre. La feuille
+« Absent du bon » s'ouvrait alors au milieu du geste, sur un livre jamais
+présenté.
+
+Deux mesures :
+
+- **Une pause de 900 ms après chaque validation**, sur *tous* les codes.
+  Un échange de livre prend bien plus longtemps, donc la cadence n'en souffre
+  pas — et rien n'est perdu : la boucle continue de tourner, un livre présenté
+  pendant la pause est lu dès qu'elle expire.
+- **Une seconde lecture exigée pour tout ce qui n'est pas un livre.** Un code à
+  préfixe Bookland (978/979) dont la clé tombe juste est accepté du premier
+  coup : la conjonction des deux ne sort pas du bruit. Tout autre code —
+  étiquette logistique, promotion collée sur la couverture, fragment attrapé de
+  biais — doit être vu deux images de suite avant d'interrompre l'opérateur.
+  Le surcoût se compte en dizaines de millisecondes, sur un cas rare.
 
 ## Ce que le navigateur ne permet pas
 

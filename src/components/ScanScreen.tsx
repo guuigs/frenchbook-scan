@@ -48,6 +48,16 @@ const IGNORE_MS = 60 * 1000;
 /** Le temps de reposer le livre après avoir refermé une feuille. */
 const RESUME_MS = 2500;
 
+/**
+ * Le temps de retirer le livre du champ après une validation.
+ *
+ * Court exprès : un échange de livre prend bien plus longtemps que cela, donc
+ * la cadence de scan n'en souffre pas, et aucune lecture n'est perdue — un
+ * livre présenté pendant la pause est lu dès qu'elle expire. C'est seulement
+ * assez pour que le geste de retrait ne balaie pas la pile posée à côté.
+ */
+const SETTLE_MS = 900;
+
 export function ScanScreen() {
   const session = useCarton((state) => state.session);
   const handleScan = useCarton((state) => state.handleScan);
@@ -80,6 +90,10 @@ export function ScanScreen() {
         play("success");
         setLastScan({ id: outcome.line.id, title: outcome.line.title });
         showFlash("ok", "1/1", outcome.line.title, displayPublisher(outcome.line));
+        // Le livre validé sans feuille reste devant l'objectif le temps du
+        // geste de retrait : sans cette pause, l'appareil lit ce qu'il balaie
+        // en chemin.
+        hold(SETTLE_MS);
         break;
       case "needsQuantity":
       case "alreadyComplete":
@@ -93,7 +107,7 @@ export function ScanScreen() {
     }
   };
 
-  const { status, message, suppress } = useBarcodeScanner({ videoRef, onCode, paused });
+  const { status, message, suppress, hold } = useBarcodeScanner({ videoRef, onCode, paused });
 
   useEffect(() => {
     unlockAudio();
@@ -232,6 +246,7 @@ export function ScanScreen() {
             setLastScan({ id: pendingLine.id, title: pendingLine.title });
             setPendingLine(null);
             suppress(pendingLine.isbn, RESUME_MS);
+            hold(SETTLE_MS);
             showFlash(
               count === expected(pendingLine) ? "ok" : "alert",
               `${count}/${expected(pendingLine)}`,
@@ -242,6 +257,7 @@ export function ScanScreen() {
           onCancel={() => {
             setPendingLine(null);
             suppress(pendingLine.isbn, RESUME_MS);
+            hold(SETTLE_MS);
           }}
         />
       ) : null}
@@ -253,6 +269,7 @@ export function ScanScreen() {
             recordExtra(unknownCode);
             setUnknownCode(null);
             suppress(unknownCode, RESUME_MS);
+            hold(SETTLE_MS);
             showFlash("alert", "+1", "Hors bon de commande", formatIsbn(unknownCode));
           }}
           onIgnore={() => {
@@ -260,6 +277,7 @@ export function ScanScreen() {
             // Ignoré une fois, ignoré pour le reste du carton : sans cela, le
             // livre encore devant l'objectif rouvre la feuille en boucle.
             suppress(unknownCode, IGNORE_MS);
+            hold(SETTLE_MS);
           }}
         />
       ) : null}

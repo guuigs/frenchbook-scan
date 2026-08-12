@@ -53,13 +53,13 @@ export function LineEditor({
     );
 
   const alignment = line.issues.find((issue) => issue.kind === "alignment");
+  const duplicateTitle = line.issues.find((issue) => issue.kind === "duplicateTitle");
   const autoFixed = line.issues.find((issue) => issue.kind === "autoFixed");
 
   const isbnValid = isValidIsbn(isbn);
-  // Le titre n'est plus exigé : il n'entre ni dans l'identification au scan ni
-  // dans le comptage, et un bordereau au libellé illisible ne doit pas interdire
-  // de corriger l'ISBN qui, lui, compte.
-  const canSave = isbnValid && (ordered > 0 || delivered > 0);
+  // Tout ISBN doit repartir avec un titre : c'est ce que l'opérateur lira au
+  // scan pour reconnaître le livre qu'il a en main.
+  const canSave = isbnValid && title.trim().length > 0 && (ordered > 0 || delivered > 0);
 
   const candidates = (field: LineField, apply: (value: string) => void) => {
     const issue = divergence(field);
@@ -118,6 +118,14 @@ export function LineEditor({
               Cet ISBN a été lu sur deux libellés différents. Sur ces bordereaux, chaque article
               tient sur un bloc de deux lignes : vérifiez sur la photo que le code appartient bien
               au titre affiché, et non à celui du bloc voisin.
+            </Note>
+          ) : null}
+
+          {duplicateTitle ? (
+            <Note tone="danger">
+              Ce titre porte {duplicateTitle.candidateB.split(" / ").length} ISBN différents (
+              {duplicateTitle.candidateB}). Un libellé a sans doute été recopié d’un bloc à
+              l’autre : retrouvez sur la photo le titre qui va avec cet ISBN.
             </Note>
           ) : null}
 

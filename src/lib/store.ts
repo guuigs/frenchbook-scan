@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { del, get, set } from "idb-keyval";
 
-import { consolidate, mergeNotDelivered, reconcile } from "./reconciler";
+import { auditStructure, consolidate, mergeNotDelivered, reconcile } from "./reconciler";
 import { prepareForUpload } from "./images";
 import { clearPages, savePage } from "./pages";
 import { normalizeIsbn } from "./isbn";
@@ -261,7 +261,7 @@ export const useCarton = create<CartonState>()(
             return reconcile(result.engineA, result.engineB, index);
           });
 
-          const lines = consolidate(perPage);
+          const lines = auditStructure(consolidate(perPage));
           if (lines.length === 0) {
             throw new Error("Aucune ligne de livre n'a été détectée sur ces pages.");
           }

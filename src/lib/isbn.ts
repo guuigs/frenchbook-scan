@@ -60,6 +60,21 @@ export function isValidIsbn(raw: string): boolean {
 }
 
 /**
+ * Un code-barres de livre : préfixe Bookland (978 ou 979) **et** clé valide.
+ *
+ * Les deux conditions ensemble rendent une lecture accidentelle très
+ * improbable : il faudrait qu'une image parasite produise à la fois les trois
+ * bons premiers chiffres et une clé de contrôle cohérente. C'est ce qui permet
+ * d'accepter un code du premier coup, là où tout autre code-barres — étiquette
+ * logistique, promotion collée sur la couverture, code d'un livre voisin
+ * attrapé de biais — demande confirmation avant d'interrompre l'opérateur.
+ */
+export function isBookIsbn(raw: string): boolean {
+  const cleaned = normalizeIsbn(raw);
+  return /^97[89]\d{10}$/.test(cleaned) && isValidEan13(cleaned);
+}
+
+/**
  * Affichage lisible : `9 782070 368228`.
  *
  * C'est le groupement EAN-13 imprimé sous les barres, celui que l'opérateur a

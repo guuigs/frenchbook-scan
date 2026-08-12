@@ -26,10 +26,12 @@ export type IssueKind =
   /** Champ vide alors qu'il est obligatoire. */
   | "missing"
   /**
-   * Les deux moteurs s'accordent sur l'ISBN mais pas du tout sur le titre : le
-   * signe qu'un des deux a rattaché le code au libellé du bloc voisin.
+   * Un même ISBN se retrouve sur deux titres sans rapport : le signe qu'un
+   * moteur a rattaché le code au libellé du bloc voisin.
    */
   | "alignment"
+  /** Le même titre est porté par deux ISBN différents. */
+  | "duplicateTitle"
   /** Divergence tranchée sans intervention, la clé de contrôle ayant départagé. */
   | "autoFixed";
 
@@ -39,7 +41,8 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
   invalidChecksum: "Clé ISBN invalide",
   merged: "Doublon fusionné",
   missing: "Champ vide",
-  alignment: "ISBN/titre décalés",
+  alignment: "ISBN sur 2 titres",
+  duplicateTitle: "Titre sur 2 ISBN",
   autoFixed: "Corrigé par la clé",
 };
 
@@ -51,6 +54,12 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
  * arrêtent l'opérateur. Un titre ou un éditeur lus différemment par les deux
  * moteurs sont affichés et corrigeables, mais ne valent pas la peine
  * d'interrompre une réception : ils ne changent rien à ce qu'il y a à compter.
+ *
+ * L'exception tient à l'appariement plutôt qu'à l'orthographe : un titre absent,
+ * un titre porté par deux ISBN, un ISBN posé sur deux titres sans rapport ne
+ * sont pas des divergences de lecture mais des liens cassés entre les deux
+ * colonnes. Ceux-là arrêtent, parce qu'ils feraient compter un livre sur la
+ * ligne d'un autre — une erreur qu'aucun scan ne rattrape ensuite.
  */
 export type IssueSeverity = "blocking" | "info";
 

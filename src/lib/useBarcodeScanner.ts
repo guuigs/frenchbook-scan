@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { decodeCanvas, warmUpDecoder } from "./decoder";
-import { normalizeIsbn } from "./isbn";
+import { isBookIsbn, normalizeIsbn } from "./isbn";
 
 /**
  * Lecture continue des codes-barres livre.
@@ -63,6 +63,8 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
   const pausedRef = useRef(paused);
   const onCodeRef = useRef(onCode);
   const suppressedRef = useRef(new Map<string, number>());
+  const holdUntilRef = useRef(0);
+  const candidateRef = useRef<string | null>(null);
 
   pausedRef.current = paused;
   onCodeRef.current = onCode;
@@ -77,6 +79,24 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
   const suppress = useCallback((code: string, ms: number = DEBOUNCE_MS) => {
     const key = normalizeIsbn(code);
     if (key) suppressedRef.current.set(key, Date.now() + ms);
+  }, []);
+
+  /**
+   * Suspend la lecture de **tous** les codes pendant un court instant.
+   *
+   * L'écartement par code ne suffisait pas. Un livre validé, l'opérateur le
+   * retire du champ — et pendant ce geste l'objectif balaie la pile posée à
+   * côté, ou attrape de biais un fragment de l'étiquette qui s'en va. Le code
+   * lu est alors un *autre* code, que rien n'écartait : la feuille « Absent du
+   * bon » s'ouvrait au milieu du mouvement, sur un livre que l'opérateur
+   * n'avait jamais présenté.
+   *
+   * Aucun scan n'est perdu pour autant : la boucle continue de tourner, et un
+   * livre présenté pendant la pause est lu dès qu'elle expire.
+   */
+  const hold = useCallback((ms: number) => {
+    holdUntilRef.current = Math.max(holdUntilRef.current, Date.now() + ms);
+    candidateRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -142,6 +162,9 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
 
     const attempt = async () => {
       if (stopped || pausedRef.current || !context || inFlight) return;
+      // Pendant la pause de repose, on ne décode même pas : c'est autant de
+      // batterie économisée sur une image dont on ne veut rien.
+      if (Date.now() < holdUntilRef.current) return;
 
       const region = captureRegion();
       if (!region) return;
@@ -212,9 +235,27 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
       if (!code) return;
 
       const now = Date.now();
+      if (now < holdUntilRef.current) return;
+
       const until = suppressedRef.current.get(code);
       if (until !== undefined && now < until) return;
 
+      /*
+       * Un ISBN de livre — préfixe 978/979 et clé valide — est accepté du
+       * premier coup : ces deux conditions réunies ne sortent pas du bruit.
+       * Tout autre code doit être vu deux images de suite avant d'interrompre
+       * l'opérateur. Une étiquette logistique lue de biais pendant que le livre
+       * s'éloigne ne survit pas à cette seconde image, et la confirmation coûte
+       * quelques dizaines de millisecondes sur un cas de toute façon rare.
+       */
+      if (!isBookIsbn(code)) {
+        if (candidateRef.current !== code) {
+          candidateRef.current = code;
+          return;
+        }
+      }
+
+      candidateRef.current = null;
       suppressedRef.current.set(code, now + DEBOUNCE_MS);
       onCodeRef.current(code);
     };
@@ -293,5 +334,5 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
     };
   }, [enabled, videoRef]);
 
-  return { status, message, suppress };
+  return { status, message, suppress, hold };
 }
