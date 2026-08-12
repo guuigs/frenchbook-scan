@@ -92,11 +92,14 @@ function checksumIssues(line: OrderLine): FieldIssue[] {
     issues.push(issue("isbn", "invalidChecksum", "blocking", line.isbn, ""));
   }
 
-  // Tout ISBN doit porter un titre. Sans lui, l'écran de scan annonce un livre
-  // que l'opérateur ne peut pas reconnaître, et la ligne devient impossible à
-  // retrouver sur le papier en cas de litige.
+  /*
+   * Un titre absent est signalé en rouge partout où la ligne s'affiche, mais
+   * n'arrête pas : il ne fausse ni l'identification au scan, qui passe par
+   * l'ISBN, ni le comptage. Il ne relève d'aucune des trois familles qui
+   * justifient d'interrompre une réception.
+   */
   if (!line.title) {
-    issues.push(issue("title", "missing", "blocking", "", ""));
+    issues.push(issue("title", "missing", "info", "", ""));
   }
 
   if (line.quantityOrdered === 0 && line.quantityDelivered === 0) {
@@ -371,16 +374,23 @@ function singleSourceLine(
       : "— absente de la 1ʳᵉ lecture —";
 
   /*
-   * Ligne non recoupée : ni l'ISBN ni la quantité n'ont de contradicteur. On la
-   * marque sans bloquer — la clé de contrôle reste le vrai garde-fou sur
-   * l'ISBN, et bloquer ici ferait rouvrir toutes les lignes d'un bon dès qu'un
-   * moteur ne répond pas, ce qui reviendrait à ressaisir le bon à la main.
+   * Ligne non recoupée : la clé de contrôle vouche encore pour l'ISBN, mais
+   * rien ne vouche pour la quantité. La suite dépend de la raison.
+   *
+   * Un seul moteur a répondu pour toute la page : la lecture croisée n'a jamais
+   * eu lieu, et bloquer reviendrait à rouvrir chaque ligne du bon — autant le
+   * ressaisir à la main. On marque sans arrêter.
+   *
+   * Les deux moteurs ont répondu et un seul a vu cette ligne : c'est un oubli
+   * franc de l'autre, sur une page qu'il a par ailleurs lue. Sa quantité n'a
+   * alors aucun contradicteur, et c'est exactement le genre d'écart qui se
+   * termine en manque non détecté. Celle-là arrête.
    */
   line.issues = [
     issue(
       "isbn",
       "singleSource",
-      "info",
+      degraded ? "info" : "blocking",
       seenBy === "A" ? extracted.isbn : note,
       seenBy === "B" ? extracted.isbn : note,
     ),

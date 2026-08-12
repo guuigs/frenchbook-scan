@@ -104,11 +104,15 @@ const LINE_FIELDS: LineField[] = [
  */
 const BLOCKING_FIELDS: LineField[] = ["isbn", "quantityOrdered", "quantityDelivered"];
 
+/**
+ * Trois familles seulement justifient d'arrêter l'opérateur : un ISBN faux ou
+ * absent, deux ISBN valides en concurrence sur un même titre, une quantité
+ * incohérente. Tout le reste s'affiche sans interrompre.
+ */
 function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
-  if (kind === "autoFixed" || kind === "singleSource" || kind === "merged") return "info";
-  // Liens cassés entre les colonnes, et non divergences d'orthographe.
+  if (kind === "autoFixed" || kind === "merged" || kind === "singleSource") return "info";
   if (kind === "alignment" || kind === "duplicateTitle") return "blocking";
-  if (kind === "missing" && field === "title") return "blocking";
+  if (kind === "missing" && field === "title") return "info";
   return BLOCKING_FIELDS.includes(field) ? "blocking" : "info";
 }
 

@@ -53,6 +53,23 @@ export function OrderReview() {
   const articlesGap = declaredArticlesGap(session);
   const autoFixed = autoFixedLines(session);
 
+  /**
+   * Un écart avec les totaux imprimés ne bloque pas — sur un bon multi-colis il
+   * est normal — mais il ne doit pas se franchir sans avoir été lu. La dernière
+   * porte avant le scan le rappelle et change de libellé.
+   */
+  const mismatch =
+    [
+      gap !== null
+        ? `Le bon annonce ${session.declaredTotalQuantity} exemplaires, la lecture en totalise ${readTotalQuantity(session)}.`
+        : null,
+      articlesGap !== null
+        ? `Il annonce ${session.declaredTotalArticles} références, la lecture en a ${session.lines.length}.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || null;
+
   return (
     <main className="flex min-h-dvh flex-col">
       <header className="pt-safe flex items-center justify-between px-4 pb-4">
@@ -85,8 +102,14 @@ export function OrderReview() {
           </Note>
         ) : null}
 
+        {/*
+          Ces deux écarts sont les seuls contrôles qui voient une ligne oubliée
+          par les deux moteurs à la fois. Ils sont en rouge et rappelés à la
+          validation : passer au scan sans les avoir regardés, c'est compter un
+          carton sur un bon amputé.
+        */}
         {gap !== null ? (
-          <Note tone="neutral">
+          <Note tone="danger">
             Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
             {readTotalQuantity(session)}.
             {gap < 0 ? " Un même ISBN figurait peut-être deux fois sur le bon." : ""}
@@ -94,7 +117,7 @@ export function OrderReview() {
         ) : null}
 
         {articlesGap !== null ? (
-          <Note tone="neutral">
+          <Note tone="danger">
             Le bon annonce {session.declaredTotalArticles} références, la lecture en a{" "}
             {session.lines.length}.
             {articlesGap < 0
@@ -179,8 +202,12 @@ export function OrderReview() {
 
       {dialog === "validate" ? (
         <Dialog
-          title="Passer au scan ?"
-          body={`${session.lines.length} titres, ${totalExpected(session)} exemplaires attendus.`}
+          title={mismatch ? "Le bon ne tombe pas juste" : "Passer au scan ?"}
+          body={
+            mismatch
+              ? `${mismatch} Le comptage se fera sur la lecture : ${session.lines.length} titres, ${totalExpected(session)} exemplaires.`
+              : `${session.lines.length} titres, ${totalExpected(session)} exemplaires attendus.`
+          }
           onDismiss={() => setDialog(null)}
         >
           <Button
@@ -189,10 +216,10 @@ export function OrderReview() {
               validateOrder();
             }}
           >
-            Commencer le scan
+            {mismatch ? "Scanner malgré l’écart" : "Commencer le scan"}
           </Button>
           <Button variant="secondary" onClick={() => setDialog(null)}>
-            Revoir
+            {mismatch ? "Revoir le bon" : "Revoir"}
           </Button>
         </Dialog>
       ) : null}

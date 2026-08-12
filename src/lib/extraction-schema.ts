@@ -51,9 +51,31 @@ const LINE_ITEM = {
   additionalProperties: false,
 } as const;
 
+/**
+ * Les règles de découpage, portées par le schéma lui-même.
+ *
+ * L'endpoint OCR documentaire ne prend pas de consigne libre : il ne reçoit que
+ * `document_annotation_format`, c'est-à-dire ce schéma. Toute la description de
+ * la structure en blocs vivait donc dans `EXTRACTION_INSTRUCTION`, que seul le
+ * moteur vision recevait — la moitié de la double lecture travaillait sans les
+ * règles. Le résumé ci-dessous est le seul canal qui atteigne les deux moteurs,
+ * et il doit rester d'accord avec l'instruction complète.
+ */
+const STRUCTURE_RULES = `Bordereau de livraison de livres, en français.
+
+DÉCOUPAGE — la quantité est l'ancre.
+Un article occupe un BLOC de deux lignes imprimées, parfois trois. Ligne 1 : la référence interne, LA QUANTITÉ et le TITRE, alignés horizontalement. Ligne 2 : l'ISBN à 13 chiffres, un éventuel complément de titre, et l'éditeur tout à droite. Cette seconde ligne n'a jamais de quantité.
+Un nouvel article commence exactement là où une quantité est imprimée, et nulle part ailleurs. Toute ligne sans quantité est la suite de celle du dessus : son ISBN appartient au titre AU-DESSUS, jamais à celui du dessous, et son complément (« LFF B1 », « NED », « LE AUDIO ») s'ajoute à ce titre au lieu d'ouvrir un article.
+Autant d'articles que de quantités imprimées, autant d'ISBN que d'articles.
+
+SECTION FINALE. À partir d'un intertitre « R E P O N S E S », « NON-SERVI », « MANQUANT » ou « Reliquat » et jusqu'au bas du tableau, plus rien n'est dans le carton : ces articles vont dans not_delivered, et la ligne sans quantité y porte le motif (« A PARAITRE ») au lieu d'un complément.
+
+FIDÉLITÉ. Ne complète jamais un ISBN de mémoire et ne corrige jamais sa clé de contrôle : recopie les chiffres visibles. Une lecture fidèle mais fausse est utile, une lecture « réparée » ne l'est pas. Cellule vide ou illisible → chaîne vide, ou 0. Un même ISBN n'apparaît qu'une fois dans lines.`;
+
 export const EXTRACTION_SCHEMA = {
   type: "object",
   title: "DeliveryNotePage",
+  description: STRUCTURE_RULES,
   properties: {
     supplier: {
       type: "string",

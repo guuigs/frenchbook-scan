@@ -31,6 +31,13 @@ Mistral différents — l'endpoint OCR documentaire et un modèle vision — ave
 champ. Deux moteurs qui se trompent au même endroit de la même façon, c'est très
 improbable ; deux moteurs qui divergent, c'est un signal.
 
+L'endpoint OCR ne prend pas de consigne libre : il ne reçoit que le schéma. Les
+règles de découpage vivent donc **dans le schéma lui-même**, à sa racine, et non
+seulement dans l'instruction envoyée au modèle vision — sans quoi la moitié de la
+double lecture travaillerait sans elles. Un second moteur qui répond sans avoir
+lu la moindre ligne est écarté plutôt que compté comme un avis : c'est une panne
+silencieuse, et la page est annoncée dégradée.
+
 **Clé de contrôle ISBN.** Tout ISBN est validé par sa clé (EAN-13 ou ISBN-10,
 converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 — détecté même
 quand les deux moteurs lisent la même chose.
@@ -46,13 +53,20 @@ clés fausses, restent indécidables : l'app affiche les deux lectures côte à 
 avec la photo de la page, et attend l'arbitrage. Le bouton de validation reste
 désactivé tant qu'il reste une ligne à trancher.
 
-**Seules l'identité et le comptage arrêtent l'opérateur.** L'ISBN identifie le
-livre au scan, les quantités disent combien doivent sortir du carton : ce sont
-les seules colonnes qui bloquent. Un titre ou un éditeur lus différemment par les
-deux moteurs sont affichés sur la ligne et corrigeables, mais ne font plus partie
-de la file d'attente — ils ne changent rien à ce qu'il y a à compter. Une file
-qui contient tout ne se distingue pas d'une file vide : on finit par tout valider
-sans regarder.
+**Trois familles arrêtent l'opérateur, et trois seulement :**
+
+1. **un ISBN faux ou absent** — clé de contrôle cassée, champ vide ;
+2. **deux ISBN valides en concurrence sur un même titre** — les deux moteurs en
+   proposent un chacun et la clé ne départage pas, ou le même libellé se
+   retrouve sur deux codes ;
+3. **une quantité incohérente** — les deux lectures divergent, la case est vide,
+   ou une ligne n'a été vue que par un seul moteur alors que les deux ont
+   répondu, auquel cas rien ne corrobore sa quantité.
+
+Tout le reste s'affiche sur la ligne, corrigeable, sans entrer dans la file :
+titre ou éditeur lus différemment, titre absent, doublon d'ISBN fusionné, ISBN
+tranché par sa clé. Une file qui contient tout ne se distingue pas d'une file
+vide : on finit par tout valider sans regarder.
 
 **Les colonnes doivent se répondre.** Trois contrôles ne portent pas sur la
 lecture d'un champ mais sur le lien entre l'ISBN et le titre — le lien qui décide
@@ -82,7 +96,9 @@ la fois — la double lecture, elle, ne voit rien quand ils omettent la même ch
 En trop, c'est un complément de libellé passé pour un titre, ou un ISBN qui
 figurait réellement deux fois. L'avertissement est indicatif et non bloquant : sur
 un bordereau multi-échéances, le total imprimé couvre souvent plus que les pages
-photographiées.
+photographiées. Il ne bloque donc pas, mais il ne se franchit pas sans avoir été
+lu : la dernière porte avant le scan le rappelle et change de libellé pour
+« Scanner malgré l'écart ».
 
 Le prompt prend soin de distinguer ce total de la ligne « TOTAL COMMANDE
 REFERENCE ... ARTICLES 77 » imprimée juste à côté sur les bordereaux Hachette :
@@ -124,11 +140,16 @@ Hachette, dont les mises en page n'ont rien de commun :
 - **Annotations manuscrites** (cercles du réceptionnaire autour des quantités) :
   le prompt impose de recopier l'imprimé, jamais le manuscrit.
 
-Si un seul des deux moteurs répond, la lecture n'est pas bloquée : elle est
-marquée dégradée, un bandeau l'annonce, et chaque ligne porte la mention
-« source unique ». Ces lignes ne bloquent pas — bloquer ici rouvrirait tout le
-bon dès qu'un moteur ne répond pas, ce qui reviendrait à le ressaisir à la main.
-La clé de contrôle reste le garde-fou sur l'ISBN.
+Une ligne « vue par un seul moteur » se traite selon la raison. Si un seul moteur
+a répondu pour toute la page, la lecture croisée n'a jamais eu lieu : la page est
+marquée dégradée, un bandeau l'annonce, et rien ne bloque — bloquer là rouvrirait
+tout le bon dès qu'un moteur ne répond pas, ce qui reviendrait à le ressaisir à
+la main. La clé de contrôle reste le garde-fou sur l'ISBN.
+
+Si les deux moteurs ont répondu et qu'un seul a vu la ligne, c'est un oubli franc
+de l'autre sur une page qu'il a par ailleurs lue. Sa quantité n'a alors aucun
+contradicteur, et c'est le genre d'écart qui finit en manque non détecté :
+celle-là bloque.
 
 ### Le décalage d'un bloc, l'erreur qui ne se voit pas
 
@@ -365,7 +386,11 @@ lectures, ligne manquée par un moteur, fusion des doublons.
 ## Limites connues
 
 - Le corps d'une requête serverless Vercel est plafonné à quelques mégaoctets :
-  les photos sont réduites à 2000 px et compressées avant envoi.
+  les photos sont réduites à 2000 px et compressées avant envoi. La qualité JPEG
+  est tenue à 0,85 et non plus 0,72 : ces bordereaux sortent d'une imprimante
+  matricielle, et le rebond de quantification étalait les jambages d'un pixel au
+  point de transformer un 3 en 8 — soit exactement les chiffres dont la clé de
+  contrôle dépend.
 - Une page très dense peut approcher la limite de durée d'une fonction Vercel
   (`maxDuration` est fixé à 60 s). L'app envoie **une page par requête**, ce qui
   garde chaque appel court même sur un bon de trente pages.

@@ -7,7 +7,19 @@
  */
 
 const MAX_DIMENSION = 2000;
-const JPEG_QUALITY = 0.72;
+
+/**
+ * Ces bordereaux sortent d'une imprimante matricielle : des chiffres tracés en
+ * points, avec des jambages d'un ou deux pixels une fois l'image réduite. C'est
+ * exactement ce que la compression JPEG abîme en premier — le rebond de
+ * quantification étale un trait fin sur ses voisins, et un 3 devient un 8.
+ *
+ * À 0,72 l'artefact était visible sur les chiffres ; à 0,85 il ne l'est plus,
+ * pour environ 60 % de poids en plus. Une page reste très en dessous de la
+ * limite de corps de requête de Vercel, et un ISBN qu'on n'a pas à faire
+ * arbitrer paie largement les octets.
+ */
+const JPEG_QUALITY = 0.85;
 
 /**
  * Une photo prise à l'iPhone porte son orientation dans ses métadonnées EXIF

@@ -140,13 +140,23 @@ async function readPageOnce(dataUrl: string, doubleCheck: boolean): Promise<OcrP
     throw new Error("Aucune ligne de livre n'a été détectée sur cette page.");
   }
 
+  /*
+   * Un second moteur qui répond sans avoir rien lu n'est pas un second avis :
+   * c'est une panne silencieuse. Le compter comme une lecture valide donnait
+   * une page entière de lignes « vues par un seul moteur », toutes marquées
+   * comme recoupées alors que rien ne l'était. On l'écarte, et la page est
+   * annoncée dégradée — ce qu'elle est.
+   */
+  const rawB =
+    payload.engineB && typeof payload.engineB === "object"
+      ? toExtractedPage(payload.engineB)
+      : null;
+  const engineB = rawB && rawB.lines.length > 0 ? rawB : null;
+
   return {
     engineA,
-    engineB:
-      payload.engineB && typeof payload.engineB === "object"
-        ? toExtractedPage(payload.engineB)
-        : null,
-    degraded: payload.degraded === true,
+    engineB,
+    degraded: payload.degraded === true || engineB === null,
   };
 }
 
