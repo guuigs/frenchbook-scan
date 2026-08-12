@@ -1,12 +1,30 @@
 /**
  * Préparation des photos avant envoi au serveur.
  *
- * Deux contraintes se rejoignent : Vercel plafonne le corps d'une requête
- * serverless à quelques mégaoctets, et au-delà de ~2000 px sur le grand côté
- * le coût d'un appel OCR monte sans gain de lecture mesurable sur un tableau.
+ * Vercel plafonne le corps d'une requête serverless à 4,5 Mo, et le moteur
+ * vision facture au nombre de pixels : le plafond ci-dessous arbitre entre ce
+ * que le papier contient et ce qu'on accepte de payer pour l'atteindre.
  */
 
-const MAX_DIMENSION = 2000;
+/**
+ * Plafond sur le grand côté, en pixels.
+ *
+ * Le nombre de pixels varie au carré du plafond : c'est lui qui décide du poids,
+ * du coût et de la latence, pas la valeur elle-même.
+ *
+ * Ces bordereaux sont imprimés en matriciel à 10 caractères par pouce. Sur une
+ * page A4 dont la feuille remplirait tout le cadre, 2400 px donnent environ
+ * 205 dpi, soit 20 px par caractère — confortable. Mais les pages sont
+ * photographiées, jamais scannées : une bonne part du cadre est du bureau et du
+ * carton, et la feuille n'en récupère guère plus des deux tiers. On retombe vers
+ * 14 px par caractère, la limite basse de ce qu'un OCR lit proprement.
+ *
+ * D'où 2400 plutôt que 2000, qui laissait les photos sous cette limite. Le gain
+ * porte sur les chiffres — jambages fins, clé de contrôle — bien plus que sur
+ * les titres, donc exactement sur ce qui déclenche un arbitrage. Au-delà de
+ * ~3000 px il n'y a plus rien à gagner : le papier ne contient pas davantage.
+ */
+const MAX_DIMENSION = 2400;
 
 /**
  * Ces bordereaux sortent d'une imprimante matricielle : des chiffres tracés en

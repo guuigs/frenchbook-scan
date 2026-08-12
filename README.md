@@ -386,11 +386,17 @@ lectures, ligne manquée par un moteur, fusion des doublons.
 ## Limites connues
 
 - Le corps d'une requête serverless Vercel est plafonné à quelques mégaoctets :
-  les photos sont réduites à 2000 px et compressées avant envoi. La qualité JPEG
-  est tenue à 0,85 et non plus 0,72 : ces bordereaux sortent d'une imprimante
-  matricielle, et le rebond de quantification étalait les jambages d'un pixel au
-  point de transformer un 3 en 8 — soit exactement les chiffres dont la clé de
-  contrôle dépend.
+  les photos sont réduites à 2400 px sur le grand côté et compressées avant
+  envoi. Ce plafond arbitre entre ce que le papier contient et ce qu'on paie
+  pour l'atteindre : le nombre de pixels varie à son carré. Les bordereaux sont
+  imprimés à 10 caractères par pouce, et comme les pages sont photographiées et
+  non scannées — une bonne part du cadre est du bureau — la feuille n'en
+  récupère que les deux tiers, soit environ 14 px par caractère. C'est la limite
+  basse de ce qu'un OCR lit proprement ; 2000 px passait en dessous.
+- La qualité JPEG est tenue à 0,85 et non 0,72 : ces bordereaux sortent d'une
+  imprimante matricielle, et le rebond de quantification étalait les jambages
+  d'un pixel au point de transformer un 3 en 8 — soit exactement les chiffres
+  dont la clé de contrôle dépend.
 - Une page très dense peut approcher la limite de durée d'une fonction Vercel
   (`maxDuration` est fixé à 60 s). L'app envoie **une page par requête**, ce qui
   garde chaque appel court même sur un bon de trente pages.
