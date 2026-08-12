@@ -478,19 +478,39 @@ export function consolidate(pages: OrderLine[][]): OrderLine[] {
     const existing = key ? result.findIndex((other) => normalizeIsbn(other.isbn) === key) : -1;
 
     if (existing >= 0) {
-      result[existing].quantityOrdered += line.quantityOrdered;
-      result[existing].quantityDelivered += line.quantityDelivered;
-      result[existing].issues = [
-        ...result[existing].issues,
-        ...line.issues,
+      const target = result[existing];
+      target.quantityOrdered += line.quantityOrdered;
+      target.quantityDelivered += line.quantityDelivered;
+      target.reference = target.reference || line.reference;
+      target.title = target.title || line.title;
+      target.publisher = target.publisher || line.publisher;
+
+      /*
+       * Un « champ vide » constaté avant la fusion peut ne plus l'être après :
+       * c'est le cas courant quand un moteur a pris la seconde ligne d'un
+       * libellé pour un article à part, produisant une ligne à quantité nulle
+       * qui vient se rabattre ici. Le garder ferait arbitrer un problème qui
+       * n'existe plus.
+       */
+      target.issues = [...target.issues, ...line.issues].filter(
+        (entry) =>
+          !(
+            entry.kind === "missing" &&
+            ((entry.field === "title" && target.title) ||
+              ((entry.field === "quantityDelivered" || entry.field === "quantityOrdered") &&
+                target.quantityDelivered + target.quantityOrdered > 0))
+          ),
+      );
+
+      target.issues.push(
         issue(
           "quantityDelivered",
           "merged",
           "blocking",
-          String(result[existing].quantityDelivered),
+          String(target.quantityDelivered),
           "cumul de 2 lignes",
         ),
-      ];
+      );
     } else {
       result.push(line);
     }

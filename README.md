@@ -79,8 +79,9 @@ Hachette, dont les mises en page n'ont rien de commun :
   « commandé » n'est renseigné que si une colonne distincte existe.
 - **Un article occupe un bloc de deux lignes imprimées**, parfois trois. La
   première porte la référence interne, la quantité et le titre ; la seconde
-  porte l'ISBN et l'éditeur. Voir plus bas : c'est la principale source
-  d'erreur de ces documents.
+  porte l'ISBN, un éventuel complément de titre (`LFF B1`, `NED`, `LE AUDIO`) et
+  l'éditeur. Voir plus bas : c'est la principale source d'erreur de ces
+  documents.
 - **Références internes du distributeur** mêlées aux ISBN dans la même colonne
   (`20 3087 8`, `45 0505 0`). Le prompt les exclut du champ `isbn` et les
   extrait dans un champ `reference` à part, où elles servent de seconde clé
@@ -100,37 +101,51 @@ La clé de contrôle reste le garde-fou sur l'ISBN.
 
 ### Le décalage d'un bloc, l'erreur qui ne se voit pas
 
-Sur ces bordereaux, chaque article tient sur **deux lignes imprimées** :
+Sur ces bordereaux, un article tient sur **deux lignes imprimées**, parfois
+trois. La seconde ne porte jamais de quantité : elle porte l'ISBN, un éventuel
+**complément de titre**, et l'éditeur tout à droite.
 
 ```
-ARTICLE          QTE   LIBELLE
-19 9119 0          1   COLORIAGES MYSTERES TABLEAUX DE MAITRES
-9782019462994                    HACHETTE HEROES
-30 1378 6          1   LES CHATIMENTS
-9782253016861                    LGF
-                                 NED
+ARTICLES         QTE   LIBELLE
+15 5974 9          1   LES AVENTURES D ARSENE LUPIN
+9782011559746                LFF B1            H.EDU. F.L.E.
+33 5449 1          2   CHINOIS TEL QU ON LE PARLE 2ED
+9782200640354                                  DUNOD
+84 8606 6          1   DELF B2 100 REUSSITE  2022  LIVRE  ONPRIN
+9782278102549                LIVRE             DIDIER FLE
 ```
 
-Un moteur qui glisse d'un cran rattache `9782253016861` à `COLORIAGES MYSTERES`
-au lieu de `LES CHATIMENTS`. L'erreur est invisible au scan : le code existe bien
-dans le bon, le livre est simplement décompté sur la mauvaise ligne. Le carton
-part pour complet alors qu'il manque un titre et qu'il y en a un en trop.
+Deux façons de se tromper, toutes deux invisibles au scan :
 
-Trois mesures se cumulent contre ça :
+- **Le décalage.** Un moteur qui glisse d'un cran rattache `9782200640354` aux
+  `AVENTURES D ARSENE LUPIN` au lieu du `CHINOIS`. Le code existe bien dans le
+  bon : le livre est simplement décompté sur la mauvaise ligne. Le carton part
+  pour complet alors qu'il manque un titre et qu'il y en a un en trop.
+- **Le complément pris pour un titre.** `LFF B1` ou `LIVRE` n'ont pas de
+  quantité, ce sont des compléments. Un moteur qui en fait un article ouvre une
+  ligne de trop — et décale les ISBN de tout ce qui suit.
 
-1. **Le prompt décrit la structure en blocs** avec un exemple travaillé, et pose
-   la règle littéralement : un ISBN appartient toujours au titre de la ligne
-   **au-dessus** de lui, jamais à celle du dessous. Il demande enfin de vérifier
-   qu'il y a autant de titres que d'ISBN et de quantités avant de répondre.
-2. **La référence interne sert d'ancre.** Elle est imprimée sur la ligne du
-   titre, donc elle identifie le bloc même quand un moteur s'est trompé d'ISBN.
-   Les deux lectures sont appariées par référence d'abord, par ISBN ensuite,
-   par titre en dernier recours.
+Quatre mesures se cumulent contre ça :
+
+1. **La quantité est l'ancre.** Le prompt décrit la structure en blocs avec deux
+   exemples travaillés — un de chaque bordereau réel — et pose la règle
+   mécaniquement : un nouvel article commence exactement là où une quantité est
+   imprimée, et nulle part ailleurs. Toute ligne sans quantité est la suite de
+   celle du dessus ; son ISBN appartient au titre au-dessus, jamais à celui du
+   dessous. Les compléments sont ajoutés au titre, jamais traités à part.
+2. **La référence interne sert d'ancre au rapprochement.** Elle est imprimée sur
+   la ligne du titre, donc elle identifie le bloc même quand un moteur s'est
+   trompé d'ISBN. Les deux lectures sont appariées par référence d'abord, par
+   ISBN ensuite, par titre en dernier recours.
 3. **Le contrôle d'alignement.** Quand les deux moteurs désignent le même bloc —
    même référence ou même ISBN — mais lui donnent deux titres qui n'ont rien à
    voir, ce n'est pas un titre mal lu, c'est un code rattaché au mauvais libellé.
    La ligne est signalée « ISBN/titre décalés » et bloque, avec un rappel de la
    structure en deux lignes dans l'écran d'arbitrage.
+4. **Le compte des références imprimé en pied de bordereau** (« ARTICLES 8 ») est
+   comparé au nombre de lignes lues. Plus de lignes que de références annoncées,
+   c'est le signe qu'un complément est passé pour un titre — le seul contrôle qui
+   attrape le cas où les deux moteurs se trompent pareil.
 
 ## Ce que le navigateur ne permet pas
 

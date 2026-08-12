@@ -17,13 +17,17 @@ const LINE_ITEM = {
     isbn: {
       type: "string",
       description:
-        "ISBN à 13 chiffres commençant par 978 ou 979, chiffres uniquement. Jamais une référence interne du distributeur. Il appartient au bloc dont la référence et le titre sont sur la ligne AU-DESSUS de lui.",
+        "ISBN à 13 chiffres commençant par 978 ou 979, chiffres uniquement. Jamais une référence interne du distributeur. Il appartient à l'article dont la quantité et le titre sont sur la ligne AU-DESSUS de lui.",
     },
-    title: { type: "string", description: "Titre du livre, tel qu'imprimé." },
+    title: {
+      type: "string",
+      description:
+        "Titre du livre, tel qu'imprimé sur la ligne qui porte la quantité, suivi des compléments des lignes sans quantité qui le suivent (« LFF B1 », « NED », « LE AUDIO »), séparés par une espace.",
+    },
     publisher: {
       type: "string",
       description:
-        "Éditeur ou collection, généralement en seconde ligne de la cellule de libellé (FOLIO, GALLIMARD JEUNE, GLENAT…). Chaîne vide si absent.",
+        "Éditeur ou collection : le bloc de texte le plus à droite de la cellule de libellé, en seconde ligne (FOLIO, DUNOD, DIDIER FLE, H.EDU. F.L.E.…). Ce n'est pas le complément de titre, qui est plus à gauche. Chaîne vide si absent.",
     },
     quantity_ordered: {
       type: "integer",
@@ -33,7 +37,7 @@ const LINE_ITEM = {
     quantity_delivered: {
       type: "integer",
       description:
-        "Quantité effectivement livrée dans ce carton. Colonne « Qté » / « QTE ». Elle est imprimée sur la ligne du TITRE, pas sur celle de l'ISBN.",
+        "Quantité effectivement livrée dans ce carton. Colonne « Qté » / « QTE ». Elle est imprimée sur la ligne du TITRE, jamais sur celle de l'ISBN. C'est elle qui marque le début d'un article : autant d'articles que de quantités imprimées.",
     },
   },
   required: [
@@ -112,13 +116,18 @@ UN ARTICLE OCCUPE PLUSIEURS LIGNES IMPRIMÉES
 C'est le point le plus important, et la source d'erreur la plus fréquente sur ces documents.
 
 Un article n'est presque jamais sur une seule ligne. Il occupe un BLOC de deux lignes imprimées, parfois trois :
-- Ligne 1 du bloc : la référence interne du distributeur, la quantité, et le TITRE.
-- Ligne 2 du bloc : l'ISBN à 13 chiffres, et l'ÉDITEUR ou la collection.
-- Ligne 3 éventuelle : une mention complémentaire (« NED », « ROMAN », « 2NDE ED »), rattachée au même bloc.
+- Ligne 1 du bloc : la référence interne du distributeur, LA QUANTITÉ, et le TITRE. Les trois sont sur la même ligne, alignés horizontalement.
+- Ligne 2 du bloc : l'ISBN à 13 chiffres, éventuellement un COMPLÉMENT de titre, et l'ÉDITEUR ou la collection. Cette ligne n'a JAMAIS de quantité.
+- Ligne 3 éventuelle : une autre mention complémentaire, toujours sans quantité.
 
-Exemple typique, colonne ARTICLE à gauche, QTE au milieu, LIBELLE à droite :
+LA QUANTITÉ EST L'ANCRE — c'est la règle à appliquer, littéralement
+Un nouvel article commence exactement là où une quantité est imprimée dans la colonne QTE, et nulle part ailleurs.
+Toute ligne SANS quantité est la suite de l'article du dessus : son ISBN, son complément et son éditeur appartiennent à cet article-là.
+Donc : un ISBN appartient TOUJOURS au titre de la ligne portant une quantité située juste AU-DESSUS de lui. Jamais à celui du dessous.
 
-    ARTICLE          QTE   LIBELLE
+Exemple 1, colonne ARTICLES à gauche, QTE au milieu, LIBELLE à droite :
+
+    ARTICLES         QTE   LIBELLE
     19 9119 0          1   COLORIAGES MYSTERES TABLEAUX DE MAITRES
     9782019462994                    HACHETTE HEROES
     30 1378 6          1   LES CHATIMENTS
@@ -127,27 +136,46 @@ Exemple typique, colonne ARTICLE à gauche, QTE au milieu, LIBELLE à droite :
     31 6304 5          1   JOURNAL D UN PARFUMEUR
     9782253163046                    LGF
 
-Cela donne exactement trois articles :
+Trois quantités imprimées, donc exactement trois articles :
 1. reference « 19 9119 0 », isbn 9782019462994, title « COLORIAGES MYSTERES TABLEAUX DE MAITRES », publisher « HACHETTE HEROES », quantité 1.
-2. reference « 30 1378 6 », isbn 9782253016861, title « LES CHATIMENTS », publisher « LGF », quantité 1.
+2. reference « 30 1378 6 », isbn 9782253016861, title « LES CHATIMENTS NED », publisher « LGF », quantité 1.
 3. reference « 31 6304 5 », isbn 9782253163046, title « JOURNAL D UN PARFUMEUR », publisher « LGF », quantité 1.
+« NED » n'a pas de quantité : c'est un complément de l'article 2, pas un quatrième article.
 
-RÈGLE DE RATTACHEMENT — à appliquer littéralement
-Un ISBN appartient TOUJOURS au titre situé sur la ligne juste AU-DESSUS de lui, jamais à celui du dessous.
-Autrement dit : descends ligne par ligne. Dès que tu vois une ligne qui porte une référence interne, une quantité et un titre, tu ouvres un nouvel article. L'ISBN et l'éditeur que tu rencontres ENSUITE, avant le titre suivant, appartiennent à cet article-là.
-Ne jamais décaler d'un cran. 9782253016861 va avec « LES CHATIMENTS », pas avec « COLORIAGES MYSTERES » ni avec « JOURNAL D UN PARFUMEUR ».
+Exemple 2, avec des compléments de titre en seconde ligne :
+
+    ARTICLES         QTE   LIBELLE
+    15 5974 9          1   LES AVENTURES D ARSENE LUPIN
+    9782011559746                LFF B1            H.EDU. F.L.E.
+    33 5449 1          2   CHINOIS TEL QU ON LE PARLE 2ED
+    9782200640354                                  DUNOD
+    84 8606 6          1   DELF B2 100 REUSSITE  2022  LIVRE  ONPRIN
+    9782278102549                LIVRE             DIDIER FLE
+    89 1565 8          1   DELF SCOLAIRE ET JUNIOR B2 NOUVEAU FORMAT EP
+    9782016286425                LE  AUDIO         H.EDU. F.L.E.
+
+Quatre quantités imprimées, donc exactement quatre articles :
+1. isbn 9782011559746, title « LES AVENTURES D ARSENE LUPIN LFF B1 », publisher « H.EDU. F.L.E. », quantité 1.
+2. isbn 9782200640354, title « CHINOIS TEL QU ON LE PARLE 2ED », publisher « DUNOD », quantité 2.
+3. isbn 9782278102549, title « DELF B2 100 REUSSITE 2022 LIVRE ONPRIN LIVRE », publisher « DIDIER FLE », quantité 1.
+4. isbn 9782016286425, title « DELF SCOLAIRE ET JUNIOR B2 NOUVEAU FORMAT EP LE AUDIO », publisher « H.EDU. F.L.E. », quantité 1.
+
+« LFF B1 », « LIVRE », « LE AUDIO » sont des compléments de titre : ils n'ont pas de quantité, donc ils n'ouvrent aucun article. Ajoute-les à la fin du titre de l'article du dessus, séparés par une espace. Ne les prends jamais pour un titre à part, et ne les mets jamais dans publisher : l'éditeur est le bloc de texte le plus à DROITE de la cellule.
+
+Ne jamais décaler d'un cran. Dans l'exemple 1, 9782253016861 va avec « LES CHATIMENTS », pas avec « COLORIAGES MYSTERES » ni avec « JOURNAL D UN PARFUMEUR ».
 
 CONTRÔLE AVANT DE RÉPONDRE
-Compte les titres, les ISBN et les quantités : il doit y en avoir autant. Si un article se retrouve sans ISBN pendant qu'un autre en a deux, c'est que tu as décalé un bloc — reprends l'appariement depuis le haut du tableau.
+Compte les quantités imprimées dans la colonne QTE, puis compte tes articles : les deux nombres doivent être égaux. Compte ensuite tes ISBN : encore le même nombre.
+Si tu as plus d'articles que de quantités, tu as pris un complément pour un titre. Si un article se retrouve sans ISBN pendant qu'un autre en a deux, tu as décalé un bloc. Dans les deux cas, reprends l'appariement depuis le haut du tableau.
 
 REPÉRAGE DES COLONNES
 Ces bordereaux varient fortement d'un distributeur à l'autre : l'ordre des colonnes, leurs intitulés et la mise en page changent. Repère chaque colonne par son sens, jamais par sa position.
 
 - \`reference\` : la référence interne du distributeur, sur la ligne du titre. Elle est plus courte que l'ISBN et souvent espacée (« 20 3087 8 », « 45 0505 0 », « 86 1177 2 »). Recopie-la dans ce champ, espaces compris. Chaîne vide si le bordereau n'en imprime pas.
 - \`isbn\` : le code à 13 chiffres commençant par 978 ou 979. Il n'est JAMAIS la référence interne : celle-ci ne va pas dans ce champ.
-- \`title\` : colonne « Libellé », « LIBELLE », « Désignation » ou « Titre ». Première ligne du bloc.
-- \`publisher\` : la seconde ligne de la cellule de libellé porte presque toujours l'éditeur ou la collection (FOLIO, GALLIMARD JEUNE, MAPAR, GLENAT, HACHETTE HEROES, LIV.POCHE JEUNE…). C'est cela qu'il faut renvoyer. Ce n'est PAS un auteur, et il ne faut jamais deviner un auteur. Chaîne vide si rien n'est imprimé.
-- \`quantity_delivered\` : colonne « Qté », « QTE », « Quantité », « Servi » ou « Livré ». C'est le nombre d'exemplaires censés être physiquement dans le carton. Elle est imprimée sur la ligne du titre : ne la lis pas sur la ligne de l'ISBN, où cette colonne est vide.
+- \`title\` : colonne « Libellé », « LIBELLE », « Désignation » ou « Titre ». Le titre de la ligne portant la quantité, suivi des compléments des lignes sans quantité qui viennent juste après.
+- \`publisher\` : le bloc de texte le plus à droite de la cellule de libellé, en seconde ligne. Il porte presque toujours l'éditeur ou la collection (FOLIO, GALLIMARD JEUNE, DUNOD, DIDIER FLE, HERMANN REF., NOUV.MONDE ED., H.EDU. F.L.E., HACHETTE HEROES…). C'est cela qu'il faut renvoyer. Ce n'est PAS un auteur, et il ne faut jamais deviner un auteur. Ce n'est pas non plus le complément de titre, qui est plus à gauche. Chaîne vide si rien n'est imprimé.
+- \`quantity_delivered\` : colonne « Qté », « QTE », « Quantité », « Servi » ou « Livré ». C'est le nombre d'exemplaires censés être physiquement dans le carton. Elle est imprimée sur la ligne du titre : ne la lis pas sur la ligne de l'ISBN, où cette colonne est toujours vide.
 - \`quantity_ordered\` : uniquement s'il existe une colonne distincte « Commandé » ou « Cdé ». Sinon, recopie la même valeur que quantity_delivered.
 
 Attention : une quantité manquante n'est jamais implicite. Si la case est vide sur la ligne du titre, mets 0 — ne recopie pas la quantité de l'article précédent.

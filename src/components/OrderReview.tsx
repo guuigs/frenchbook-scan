@@ -7,6 +7,7 @@ import { formatIsbn } from "@/lib/isbn";
 import {
   autoFixedLines,
   blockingIssues,
+  declaredArticlesGap,
   declaredQuantityGap,
   displayPublisher,
   infoIssues,
@@ -49,6 +50,7 @@ export function OrderReview() {
 
   const clean = isReviewComplete(session);
   const gap = declaredQuantityGap(session);
+  const articlesGap = declaredArticlesGap(session);
   const autoFixed = autoFixedLines(session);
 
   return (
@@ -87,6 +89,16 @@ export function OrderReview() {
           <Note tone="neutral">
             Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
             {readTotalQuantity(session)}.
+          </Note>
+        ) : null}
+
+        {articlesGap !== null ? (
+          <Note tone="neutral">
+            Le bon annonce {session.declaredTotalArticles} références, la lecture en a{" "}
+            {session.lines.length}.
+            {articlesGap < 0
+              ? " Une seconde ligne de libellé a peut-être été prise pour un titre."
+              : " Une ligne a peut-être été sautée."}
           </Note>
         ) : null}
 
