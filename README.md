@@ -16,7 +16,7 @@ elle produit un récapitulatif des écarts et efface tout.
 |---|---|
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
 | 2. Lecture | Chaque page passe dans **deux moteurs Mistral indépendants**, côté serveur, et les résultats sont comparés champ à champ. |
-| 3. Contrôle | Seules les lignes divergentes ou à ISBN invalide remontent, avec la photo de la page en regard pour trancher. |
+| 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
 | 4. Scan | Caméra en continu. Quantité 1 → voile vert plein écran, 1,2 s. Quantité > 1 → feuille de validation. |
 | 5. Clôture | Manques, surplus, abîmés, hors commande. Export PDF + CSV, puis **purge totale**. |
 
@@ -35,10 +35,24 @@ improbable ; deux moteurs qui divergent, c'est un signal.
 converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 — détecté même
 quand les deux moteurs lisent la même chose.
 
-**Rien n'est deviné.** Là où un doute subsiste, l'app ne tranche jamais à la
-place de l'opérateur : elle affiche les deux lectures côte à côte, avec la photo
-de la page, et attend l'arbitrage. Le bouton de validation reste désactivé tant
-qu'il reste une ligne à vérifier.
+**Ce que la clé peut trancher, elle le tranche.** Quand les deux moteurs lisent
+deux ISBN différents et qu'un seul porte une clé de contrôle valide, il n'y a
+rien à arbitrer : l'autre est faux. L'app retient le valide sans rien demander,
+et se contente de le mentionner. Faire valider ce cas par un humain reviendrait à
+lui demander de recalculer une clé EAN-13 de tête.
+
+**Rien n'est deviné pour autant.** Deux ISBN valides mais différents, ou deux
+clés fausses, restent indécidables : l'app affiche les deux lectures côte à côte
+avec la photo de la page, et attend l'arbitrage. Le bouton de validation reste
+désactivé tant qu'il reste une ligne à trancher.
+
+**Seules l'identité et le comptage arrêtent l'opérateur.** L'ISBN identifie le
+livre au scan, les quantités disent combien doivent sortir du carton : ce sont
+les seules colonnes qui bloquent. Un titre ou un éditeur lus différemment par les
+deux moteurs sont affichés sur la ligne et corrigeables, mais ne font plus partie
+de la file d'attente — ils ne changent rien à ce qu'il y a à compter. Une file
+qui contient tout ne se distingue pas d'une file vide : on finit par tout valider
+sans regarder.
 
 **Contrôle du total imprimé.** Quand le bordereau porte un total d'exemplaires
 (« Qté : 45 », « QUANTITE : 7 »), l'app le compare à la somme des lignes lues.
@@ -63,9 +77,14 @@ Hachette, dont les mises en page n'ont rien de commun :
   entre les deux moteurs sur presque chaque ligne.
 - **Une seule colonne de quantité** le plus souvent (`Qté`, `QTE`). Le champ
   « commandé » n'est renseigné que si une colonne distincte existe.
+- **Un article occupe un bloc de deux lignes imprimées**, parfois trois. La
+  première porte la référence interne, la quantité et le titre ; la seconde
+  porte l'ISBN et l'éditeur. Voir plus bas : c'est la principale source
+  d'erreur de ces documents.
 - **Références internes du distributeur** mêlées aux ISBN dans la même colonne
-  (`20 3087 8`, `45 0505 0`). Le prompt les exclut explicitement, et la clé de
-  contrôle rattrape les cas où un moteur se trompe quand même.
+  (`20 3087 8`, `45 0505 0`). Le prompt les exclut du champ `isbn` et les
+  extrait dans un champ `reference` à part, où elles servent de seconde clé
+  d'appariement entre les deux lectures.
 - **Section « NON-SERVI DE VOTRE LIVRAISON »** : ces articles ne sont pas dans
   le carton. Ils sont extraits dans une liste séparée, jamais dans les lignes à
   scanner. Sans cette distinction, l'opérateur chercherait un livre absent et
@@ -75,7 +94,43 @@ Hachette, dont les mises en page n'ont rien de commun :
 
 Si un seul des deux moteurs répond, la lecture n'est pas bloquée : elle est
 marquée dégradée, un bandeau l'annonce, et chaque ligne porte la mention
-« source unique » à vérifier.
+« source unique ». Ces lignes ne bloquent pas — bloquer ici rouvrirait tout le
+bon dès qu'un moteur ne répond pas, ce qui reviendrait à le ressaisir à la main.
+La clé de contrôle reste le garde-fou sur l'ISBN.
+
+### Le décalage d'un bloc, l'erreur qui ne se voit pas
+
+Sur ces bordereaux, chaque article tient sur **deux lignes imprimées** :
+
+```
+ARTICLE          QTE   LIBELLE
+19 9119 0          1   COLORIAGES MYSTERES TABLEAUX DE MAITRES
+9782019462994                    HACHETTE HEROES
+30 1378 6          1   LES CHATIMENTS
+9782253016861                    LGF
+                                 NED
+```
+
+Un moteur qui glisse d'un cran rattache `9782253016861` à `COLORIAGES MYSTERES`
+au lieu de `LES CHATIMENTS`. L'erreur est invisible au scan : le code existe bien
+dans le bon, le livre est simplement décompté sur la mauvaise ligne. Le carton
+part pour complet alors qu'il manque un titre et qu'il y en a un en trop.
+
+Trois mesures se cumulent contre ça :
+
+1. **Le prompt décrit la structure en blocs** avec un exemple travaillé, et pose
+   la règle littéralement : un ISBN appartient toujours au titre de la ligne
+   **au-dessus** de lui, jamais à celle du dessous. Il demande enfin de vérifier
+   qu'il y a autant de titres que d'ISBN et de quantités avant de répondre.
+2. **La référence interne sert d'ancre.** Elle est imprimée sur la ligne du
+   titre, donc elle identifie le bloc même quand un moteur s'est trompé d'ISBN.
+   Les deux lectures sont appariées par référence d'abord, par ISBN ensuite,
+   par titre en dernier recours.
+3. **Le contrôle d'alignement.** Quand les deux moteurs désignent le même bloc —
+   même référence ou même ISBN — mais lui donnent deux titres qui n'ont rien à
+   voir, ce n'est pas un titre mal lu, c'est un code rattaché au mauvais libellé.
+   La ligne est signalée « ISBN/titre décalés » et bloque, avec un rappel de la
+   structure en deux lignes dans l'écran d'arbitrage.
 
 ## Ce que le navigateur ne permet pas
 
@@ -226,15 +281,18 @@ src/
 ## Tester sans matériel
 
 Avec `NEXT_PUBLIC_ENABLE_DEMO=1`, **Réglages → Charger un bon de démonstration**
-injecte un bon fictif de 7 titres contenant une divergence de lecture, une clé
-ISBN cassée et une ligne à source unique. De quoi parcourir tout le flux sans
-photo ni appel Mistral. À activer en local et sur les préversions, jamais en
-production.
+injecte un bon fictif de 7 titres qui couvre les deux régimes : ce qui doit
+remonter à l'opérateur — quantités divergentes, clé ISBN cassée, ISBN rattaché au
+mauvais titre — et ce qui doit rester une simple mention — titre lu
+différemment, ligne non recoupée, ISBN tranché par la clé. De quoi parcourir tout
+le flux sans photo ni appel Mistral. À activer en local et sur les préversions,
+jamais en production.
 
 La logique métier — clés ISBN, rapprochement, consolidation — est couverte par
 des assertions vérifiées : conversion ISBN-10 → 13, détection d'un chiffre faux
-malgré l'accord des deux moteurs, divergence de quantité, ligne manquée par un
-moteur, fusion des doublons.
+malgré l'accord des deux moteurs, arbitrage automatique entre une clé valide et
+une clé cassée, divergence de quantité, décalage d'un bloc entre les deux
+lectures, ligne manquée par un moteur, fusion des doublons.
 
 ## Limites connues
 

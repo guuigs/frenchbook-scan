@@ -100,6 +100,7 @@ function asInt(value: unknown): number {
 function toExtractedLine(raw: unknown): ExtractedLine {
   const record = (raw ?? {}) as Record<string, unknown>;
   return {
+    reference: asString(record.reference),
     isbn: asString(record.isbn),
     title: asString(record.title),
     publisher: asString(record.publisher),

@@ -1,5 +1,6 @@
-import type { CartonSession, OrderLine } from "./types";
+import type { CartonSession, FieldIssue, OrderLine } from "./types";
 import { normalizeIsbn } from "./isbn";
+import { isBlocking } from "./reconciler";
 
 /**
  * Ce qui doit physiquement se trouver dans le carton : la quantité que le
@@ -26,8 +27,32 @@ export function backorder(line: OrderLine): number {
   return Math.max(line.quantityOrdered - line.quantityDelivered, 0);
 }
 
+/**
+ * Ce qui arrête l'opérateur : une lecture douteuse de l'ISBN ou d'une quantité.
+ *
+ * Le reste — titre ou éditeur lus différemment par les deux moteurs, ligne non
+ * recoupée dont la clé ISBN tombe juste — reste affiché sur la ligne, mais ne
+ * fait plus partie de la file d'attente. Une file qui contient tout ne se
+ * distingue pas d'une file vide : on finit par tout valider sans regarder.
+ */
 export function needsReview(line: OrderLine): boolean {
-  return line.issues.length > 0;
+  return line.issues.some(isBlocking);
+}
+
+/** Signalements portés par une ligne sans qu'elle réclame d'arbitrage. */
+export function infoIssues(line: OrderLine): FieldIssue[] {
+  return line.issues.filter((entry) => !isBlocking(entry));
+}
+
+export function blockingIssues(line: OrderLine): FieldIssue[] {
+  return line.issues.filter(isBlocking);
+}
+
+/** Lignes dont un ISBN divergent a été tranché par la clé de contrôle. */
+export function autoFixedLines(session: CartonSession): OrderLine[] {
+  return session.lines.filter((line) =>
+    line.issues.some((entry) => entry.kind === "autoFixed"),
+  );
 }
 
 /**

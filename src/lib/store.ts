@@ -314,6 +314,7 @@ export const useCarton = create<CartonState>()(
       addManualLine: () => {
         const line: OrderLine = {
           id: crypto.randomUUID(),
+          reference: "",
           isbn: "",
           title: "",
           publisher: "",
@@ -321,7 +322,14 @@ export const useCarton = create<CartonState>()(
           quantityDelivered: 1,
           pageIndex: 0,
           issues: [
-            { id: crypto.randomUUID(), field: "isbn", kind: "missing", candidateA: "", candidateB: "" },
+            {
+              id: crypto.randomUUID(),
+              field: "isbn",
+              kind: "missing",
+              severity: "blocking",
+              candidateA: "",
+              candidateB: "",
+            },
           ],
           counted: 0,
           damaged: 0,
@@ -471,7 +479,7 @@ export const useCarton = create<CartonState>()(
        * manquants — et l'opérateur perdrait son comptage en cours sur une
        * erreur incompréhensible.
        */
-      version: 2,
+      version: 3,
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
@@ -509,6 +517,7 @@ function demoLine(
 ): OrderLine {
   return {
     id: crypto.randomUUID(),
+    reference: "",
     isbn,
     title,
     publisher,
@@ -523,9 +532,11 @@ function demoLine(
 
 /**
  * Bon fictif pour parcourir tout le flux sans photo ni appel Mistral.
- * Les anomalies sont volontaires : une divergence de lecture, une clé ISBN
- * cassée et une ligne à source unique, de quoi éprouver chaque branche de
- * l'écran de contrôle.
+ *
+ * Les anomalies sont volontaires et couvrent les deux régimes : ce qui doit
+ * remonter à l'opérateur — quantités divergentes, clé ISBN cassée, ISBN
+ * rattaché au mauvais titre — et ce qui doit rester une simple mention —
+ * titre lu différemment, ligne non recoupée, ISBN tranché par la clé.
  */
 function makeDemoSession(): CartonSession {
   return {
@@ -536,11 +547,13 @@ function makeDemoSession(): CartonSession {
     lines: [
       demoLine("9782070368228", "COMTE DE MONTE CRISTO", "FOLIO", 1, 1, 0),
       demoLine("9782070612758", "ARSENE LUPIN, GENTLEMAN", "GALLIMARD JEUNE", 3, 3, 0),
+      // Titre divergent seul : mention, pas d'arrêt.
       demoLine("9782021400984", "FIGURES DU FOU", "GALLIMARD", 5, 5, 0, [
         {
           id: crypto.randomUUID(),
           field: "title",
           kind: "conflict",
+          severity: "info",
           candidateA: "FIGURES DU FOU",
           candidateB: "FIGURE DU FOU",
         },
@@ -551,21 +564,52 @@ function makeDemoSession(): CartonSession {
           id: crypto.randomUUID(),
           field: "isbn",
           kind: "invalidChecksum",
+          severity: "blocking",
           candidateA: "9782070782010",
           candidateB: "",
         },
       ]),
-      demoLine("9782213242583", "MES MUSIQUES DU MONDE", "GALLIMARD JEUNE", 4, 2, 1),
+      // Quantité livrée lue 2 d'un côté, 4 de l'autre : à trancher.
+      demoLine("9782213242583", "MES MUSIQUES DU MONDE", "GALLIMARD JEUNE", 4, 2, 1, [
+        {
+          id: crypto.randomUUID(),
+          field: "quantityDelivered",
+          kind: "conflict",
+          severity: "blocking",
+          candidateA: "2",
+          candidateB: "4",
+        },
+      ]),
+      // ISBN divergent tranché tout seul : la lecture 9782072678450 était fausse.
       demoLine("9782072678455", "PROTOCOLES MAPAR 2025", "MAPAR", 1, 1, 1, [
         {
           id: crypto.randomUUID(),
-          field: "title",
+          field: "isbn",
+          kind: "autoFixed",
+          severity: "info",
+          candidateA: "9782072678450",
+          candidateB: "9782072678455",
+        },
+        {
+          id: crypto.randomUUID(),
+          field: "isbn",
           kind: "singleSource",
+          severity: "info",
           candidateA: "— absente de la 1ʳᵉ lecture —",
-          candidateB: "PROTOCOLES MAPAR 2025",
+          candidateB: "9782072678455",
         },
       ]),
-      demoLine("9782070179268", "BERSERK T43 COLLECTOR", "GLENAT", 6, 6, 1),
+      // Même ISBN des deux côtés, deux titres sans rapport : décalage de bloc.
+      demoLine("9782070179268", "BERSERK T43 COLLECTOR", "GLENAT", 6, 6, 1, [
+        {
+          id: crypto.randomUUID(),
+          field: "title",
+          kind: "alignment",
+          severity: "blocking",
+          candidateA: "BERSERK T43 COLLECTOR",
+          candidateB: "CAP CANAILLE",
+        },
+      ]),
     ],
     // Reproduit la section « NON-SERVI DE VOTRE LIVRAISON » d'un bon SODIS.
     notDelivered: [

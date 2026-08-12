@@ -5,8 +5,11 @@ import { useMemo, useState } from "react";
 import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
 import {
+  autoFixedLines,
+  blockingIssues,
   declaredQuantityGap,
   displayPublisher,
+  infoIssues,
   isReviewComplete,
   needsReview,
   readTotalQuantity,
@@ -46,6 +49,7 @@ export function OrderReview() {
 
   const clean = isReviewComplete(session);
   const gap = declaredQuantityGap(session);
+  const autoFixed = autoFixedLines(session);
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -70,6 +74,14 @@ export function OrderReview() {
 
       <div className="flex-1 space-y-4 px-4 pb-6">
         {degraded ? <Note tone="neutral">Un seul moteur a répondu sur certaines pages.</Note> : null}
+
+        {autoFixed.length > 0 ? (
+          <Note tone="neutral">
+            {autoFixed.length === 1
+              ? "1 ISBN divergent tranché par sa clé de contrôle."
+              : `${autoFixed.length} ISBN divergents tranchés par leur clé de contrôle.`}
+          </Note>
+        ) : null}
 
         {gap !== null ? (
           <Note tone="neutral">
@@ -101,7 +113,7 @@ export function OrderReview() {
 
         {pending.length > 0 ? (
           <section>
-            <Label>À vérifier · {pending.length}</Label>
+            <Label>ISBN ou quantité à trancher · {pending.length}</Label>
             <ul className="overflow-hidden rounded-[10px] border border-border">
               {pending.map((line) => (
                 <LineRow key={line.id} line={line} onSelect={() => setEditing(line)} />
@@ -112,7 +124,7 @@ export function OrderReview() {
 
         {confirmed.length > 0 ? (
           <section>
-            <Label>Vérifiées · {confirmed.length}</Label>
+            <Label>Sans arbitrage · {confirmed.length}</Label>
             <ul className="overflow-hidden rounded-[10px] border border-border">
               {confirmed.map((line) => (
                 <LineRow key={line.id} line={line} onSelect={() => setEditing(line)} />
@@ -191,8 +203,9 @@ export function OrderReview() {
 }
 
 function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) {
-  const kinds = Array.from(new Set(line.issues.map((issue) => issue.kind)));
-  const flagged = line.issues.length > 0;
+  const blocking = Array.from(new Set(blockingIssues(line).map((issue) => issue.kind)));
+  const notes = Array.from(new Set(infoIssues(line).map((issue) => issue.kind)));
+  const flagged = blocking.length > 0;
 
   return (
     <li className="deferred-row border-b border-border last:border-0">
@@ -220,8 +233,13 @@ function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) 
             <span className="font-mono text-[11px] text-faint tabular-nums">
               {line.quantityOrdered}→{line.quantityDelivered}
             </span>
-            {kinds.map((kind) => (
+            {blocking.map((kind) => (
               <Tag key={kind}>{ISSUE_LABELS[kind]}</Tag>
+            ))}
+            {notes.map((kind) => (
+              <Tag key={kind} tone="neutral">
+                {ISSUE_LABELS[kind]}
+              </Tag>
             ))}
           </span>
         </span>

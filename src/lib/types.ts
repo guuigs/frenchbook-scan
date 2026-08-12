@@ -13,7 +13,7 @@ export const FIELD_LABELS: Record<LineField, string> = {
   quantityDelivered: "Qté livrée",
 };
 
-/** Raison pour laquelle une ligne doit passer devant les yeux d'un humain. */
+/** Raison pour laquelle une ligne mérite d'être signalée. */
 export type IssueKind =
   /** Les deux moteurs OCR ne lisent pas la même chose. */
   | "conflict"
@@ -24,7 +24,14 @@ export type IssueKind =
   /** Le même ISBN apparaissait plusieurs fois, les quantités ont été fusionnées. */
   | "merged"
   /** Champ vide alors qu'il est obligatoire. */
-  | "missing";
+  | "missing"
+  /**
+   * Les deux moteurs s'accordent sur l'ISBN mais pas du tout sur le titre : le
+   * signe qu'un des deux a rattaché le code au libellé du bloc voisin.
+   */
+  | "alignment"
+  /** Divergence tranchée sans intervention, la clé de contrôle ayant départagé. */
+  | "autoFixed";
 
 export const ISSUE_LABELS: Record<IssueKind, string> = {
   conflict: "Lecture divergente",
@@ -32,12 +39,26 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
   invalidChecksum: "Clé ISBN invalide",
   merged: "Doublon fusionné",
   missing: "Champ vide",
+  alignment: "ISBN/titre décalés",
+  autoFixed: "Corrigé par la clé",
 };
+
+/**
+ * Un signalement bloque le passage au scan, ou reste purement indicatif.
+ *
+ * Seules les colonnes qui décident du comptage — l'ISBN, qui identifie le livre
+ * au scan, et les quantités, qui disent combien doivent sortir du carton —
+ * arrêtent l'opérateur. Un titre ou un éditeur lus différemment par les deux
+ * moteurs sont affichés et corrigeables, mais ne valent pas la peine
+ * d'interrompre une réception : ils ne changent rien à ce qu'il y a à compter.
+ */
+export type IssueSeverity = "blocking" | "info";
 
 export interface FieldIssue {
   id: string;
   field: LineField;
   kind: IssueKind;
+  severity: IssueSeverity;
   /** Valeur proposée par le moteur OCR documentaire. */
   candidateA: string;
   /** Valeur proposée par le moteur vision. */
@@ -47,6 +68,14 @@ export interface FieldIssue {
 /** Une ligne du bon de commande papier, enrichie du comptage physique. */
 export interface OrderLine {
   id: string;
+  /**
+   * Référence interne du distributeur, imprimée sur la ligne du titre (« 19 9119
+   * 0 »). Elle n'identifie pas le livre — deux distributeurs numérotent
+   * différemment — mais elle est le seul repère qui reste sur le papier quand
+   * l'ISBN est mal lu : elle sert à retrouver la ligne sur le bordereau, et à
+   * apparier les deux lectures d'un même bloc.
+   */
+  reference: string;
   isbn: string;
   title: string;
   publisher: string;
@@ -104,6 +133,7 @@ export interface CartonSession {
 
 /** Ligne brute renvoyée par un moteur d'extraction, avant rapprochement. */
 export interface ExtractedLine {
+  reference: string;
   isbn: string;
   title: string;
   publisher: string;

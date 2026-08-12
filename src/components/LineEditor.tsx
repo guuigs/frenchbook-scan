@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from "react";
 import { isValidIsbn, normalizeIsbn } from "@/lib/isbn";
 import { loadPage } from "@/lib/pages";
 import type { FieldIssue, LineField, OrderLine } from "@/lib/types";
-import { Button, Input, Sheet } from "./ui";
+import { Button, Input, Note, Sheet } from "./ui";
 import { IconClose, IconMinus, IconPlus } from "./icons";
 
 /**
@@ -44,14 +44,25 @@ export function LineEditor({
     };
   }, [line.pageIndex]);
 
-  const conflict = (field: LineField): FieldIssue | undefined =>
-    line.issues.find((issue) => issue.field === field && issue.kind === "conflict");
+  /** Les trois genres de signalement qui portent deux lectures comparables. */
+  const divergence = (field: LineField): FieldIssue | undefined =>
+    line.issues.find(
+      (issue) =>
+        issue.field === field &&
+        (issue.kind === "conflict" || issue.kind === "alignment" || issue.kind === "autoFixed"),
+    );
+
+  const alignment = line.issues.find((issue) => issue.kind === "alignment");
+  const autoFixed = line.issues.find((issue) => issue.kind === "autoFixed");
 
   const isbnValid = isValidIsbn(isbn);
-  const canSave = title.trim().length > 0 && isbnValid && (ordered > 0 || delivered > 0);
+  // Le titre n'est plus exigé : il n'entre ni dans l'identification au scan ni
+  // dans le comptage, et un bordereau au libellé illisible ne doit pas interdire
+  // de corriger l'ISBN qui, lui, compte.
+  const canSave = isbnValid && (ordered > 0 || delivered > 0);
 
   const candidates = (field: LineField, apply: (value: string) => void) => {
-    const issue = conflict(field);
+    const issue = divergence(field);
     if (!issue) return null;
     return (
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -102,6 +113,21 @@ export function LineEditor({
         }
       >
         <div className="space-y-4">
+          {alignment ? (
+            <Note tone="danger">
+              Cet ISBN a été lu sur deux libellés différents. Sur ces bordereaux, chaque article
+              tient sur un bloc de deux lignes : vérifiez sur la photo que le code appartient bien
+              au titre affiché, et non à celui du bloc voisin.
+            </Note>
+          ) : null}
+
+          {autoFixed ? (
+            <Note tone="neutral">
+              Lectures divergentes ({autoFixed.candidateA || "vide"} / {autoFixed.candidateB ||
+                "vide"}) : celle dont la clé de contrôle tombe juste a été retenue.
+            </Note>
+          ) : null}
+
           {page ? (
             <button
               type="button"
@@ -141,6 +167,11 @@ export function LineEditor({
                 aria-live="polite"
               >
                 {isbnValid ? "clé valide" : "clé invalide"}
+              </p>
+            ) : null}
+            {line.reference ? (
+              <p className="mt-1.5 font-mono text-[11px] text-faint" translate="no">
+                réf. bordereau {line.reference}
               </p>
             ) : null}
             {candidates("isbn", (value) => setIsbn(normalizeIsbn(value)))}
