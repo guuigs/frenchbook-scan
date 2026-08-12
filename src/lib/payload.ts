@@ -104,9 +104,8 @@ const LINE_FIELDS: LineField[] = [
 const BLOCKING_FIELDS: LineField[] = ["isbn", "quantityOrdered", "quantityDelivered"];
 
 function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
-  if (kind === "autoFixed") return "info";
+  if (kind === "autoFixed" || kind === "singleSource" || kind === "merged") return "info";
   if (kind === "alignment") return "blocking";
-  if (kind === "singleSource") return "info";
   return BLOCKING_FIELDS.includes(field) ? "blocking" : "info";
 }
 

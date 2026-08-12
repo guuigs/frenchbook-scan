@@ -467,8 +467,18 @@ export function mergeNotDelivered(entries: ExtractedNotDelivered[]): NotDelivere
 }
 
 /**
- * Fusionne les pages d'un même bon : additionne les doublons d'ISBN et signale
- * la fusion pour qu'un humain confirme.
+ * Réunit les pages d'un même bon en une seule liste, un ISBN par ligne.
+ *
+ * Un même ISBN vu deux fois n'est pas une commande de deux lots : c'est le même
+ * bloc du bordereau lu deux fois — une page photographiée en double, ou un
+ * moteur qui a pris la seconde ligne d'un libellé pour un article à part. On
+ * garde donc **la plus grande** quantité des deux, jamais leur somme :
+ * additionner ferait chercher à l'opérateur un exemplaire qui n'existe pas, et
+ * le carton finirait en manque imaginaire.
+ *
+ * La fusion ne demande rien à personne. Elle laisse une mention sur la ligne, et
+ * le total imprimé en pied de bordereau reste là pour détecter le cas rare où
+ * l'ISBN figurait réellement deux fois.
  */
 export function consolidate(pages: OrderLine[][]): OrderLine[] {
   const result: OrderLine[] = [];
@@ -477,43 +487,43 @@ export function consolidate(pages: OrderLine[][]): OrderLine[] {
     const key = normalizeIsbn(line.isbn);
     const existing = key ? result.findIndex((other) => normalizeIsbn(other.isbn) === key) : -1;
 
-    if (existing >= 0) {
-      const target = result[existing];
-      target.quantityOrdered += line.quantityOrdered;
-      target.quantityDelivered += line.quantityDelivered;
-      target.reference = target.reference || line.reference;
-      target.title = target.title || line.title;
-      target.publisher = target.publisher || line.publisher;
-
-      /*
-       * Un « champ vide » constaté avant la fusion peut ne plus l'être après :
-       * c'est le cas courant quand un moteur a pris la seconde ligne d'un
-       * libellé pour un article à part, produisant une ligne à quantité nulle
-       * qui vient se rabattre ici. Le garder ferait arbitrer un problème qui
-       * n'existe plus.
-       */
-      target.issues = [...target.issues, ...line.issues].filter(
-        (entry) =>
-          !(
-            entry.kind === "missing" &&
-            ((entry.field === "title" && target.title) ||
-              ((entry.field === "quantityDelivered" || entry.field === "quantityOrdered") &&
-                target.quantityDelivered + target.quantityOrdered > 0))
-          ),
-      );
-
-      target.issues.push(
-        issue(
-          "quantityDelivered",
-          "merged",
-          "blocking",
-          String(target.quantityDelivered),
-          "cumul de 2 lignes",
-        ),
-      );
-    } else {
+    if (existing < 0) {
       result.push(line);
+      continue;
     }
+
+    const target = result[existing];
+    target.quantityOrdered = Math.max(target.quantityOrdered, line.quantityOrdered);
+    target.quantityDelivered = Math.max(target.quantityDelivered, line.quantityDelivered);
+    target.reference = target.reference || line.reference;
+    target.title = target.title || line.title;
+    target.publisher = target.publisher || line.publisher;
+
+    /*
+     * Un « champ vide » constaté avant la fusion peut ne plus l'être après :
+     * la ligne fantôme d'un complément arrive avec une quantité nulle et vient
+     * se rabattre ici. Garder son signalement ferait arbitrer un problème qui
+     * n'existe plus.
+     */
+    target.issues = [...target.issues, ...line.issues].filter(
+      (entry) =>
+        !(
+          entry.kind === "missing" &&
+          ((entry.field === "title" && target.title) ||
+            ((entry.field === "quantityDelivered" || entry.field === "quantityOrdered") &&
+              target.quantityDelivered + target.quantityOrdered > 0))
+        ),
+    );
+
+    target.issues.push(
+      issue(
+        "quantityDelivered",
+        "merged",
+        "info",
+        String(target.quantityDelivered),
+        "2 lignes pour un même ISBN",
+      ),
+    );
   }
 
   return result;

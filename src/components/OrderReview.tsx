@@ -89,6 +89,7 @@ export function OrderReview() {
           <Note tone="neutral">
             Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
             {readTotalQuantity(session)}.
+            {gap < 0 ? " Un même ISBN figurait peut-être deux fois sur le bon." : ""}
           </Note>
         ) : null}
 
@@ -230,21 +231,31 @@ function LineRow({ line, onSelect }: { line: OrderLine; onSelect: () => void }) 
           {flagged ? <IconAlert /> : <IconCheck />}
         </span>
 
+        {/*
+          Trois informations portent le travail de réception : le titre pour
+          reconnaître le livre, l'ISBN pour le scanner, la quantité pour savoir
+          combien en sortir. L'éditeur ne sert qu'à départager deux titres
+          voisins : il passe en gris clair, derrière les trois autres.
+        */}
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-[14px] font-medium ${line.title ? "" : "text-danger"}`}>
             {line.title || "Titre manquant"}
           </span>
-          <span className="block truncate text-[13px] text-muted">{displayPublisher(line)}</span>
-          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
             <span
-              className={`font-mono text-[11px] tabular-nums ${line.isbn ? "text-faint" : "text-danger"}`}
+              className={`font-mono text-[12px] tabular-nums ${line.isbn ? "text-muted" : "text-danger"}`}
               translate="no"
             >
               {line.isbn ? formatIsbn(line.isbn) : "ISBN manquant"}
             </span>
-            <span className="font-mono text-[11px] text-faint tabular-nums">
-              {line.quantityOrdered}→{line.quantityDelivered}
+            <span className="font-mono text-[12px] font-medium tabular-nums">
+              {line.quantityOrdered === line.quantityDelivered
+                ? `×${line.quantityDelivered}`
+                : `${line.quantityOrdered}→${line.quantityDelivered}`}
             </span>
+            <span className="truncate text-[11px] text-faint">{displayPublisher(line)}</span>
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 empty:mt-0">
             {blocking.map((kind) => (
               <Tag key={kind}>{ISSUE_LABELS[kind]}</Tag>
             ))}

@@ -146,16 +146,21 @@ export function readTotalQuantity(session: CartonSession): number {
 
 /**
  * Écart entre le total imprimé sur le bordereau et la somme des lignes lues.
+ * Négatif quand la lecture en totalise plus que le bon n'en annonce.
  *
  * C'est le seul contrôle capable de détecter une ligne entière sautée par les
  * deux moteurs à la fois — la double lecture ne voit rien quand ils omettent la
- * même chose. Purement indicatif : sur un bordereau multi-échéances ou
- * multi-colis, le total imprimé couvre souvent plus que les pages photographiées.
+ * même chose. L'écart négatif compte autant : c'est lui qui rattrape un même
+ * ISBN réellement présent deux fois sur le papier, que la consolidation vient de
+ * ramener à une seule ligne.
+ *
+ * Purement indicatif : sur un bordereau multi-échéances ou multi-colis, le total
+ * imprimé couvre souvent plus que les pages photographiées.
  */
 export function declaredQuantityGap(session: CartonSession): number | null {
   if (session.declaredTotalQuantity <= 0) return null;
   const gap = session.declaredTotalQuantity - readTotalQuantity(session);
-  return gap > 0 ? gap : null;
+  return gap !== 0 ? gap : null;
 }
 
 /**

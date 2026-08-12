@@ -54,13 +54,25 @@ de la file d'attente — ils ne changent rien à ce qu'il y a à compter. Une fi
 qui contient tout ne se distingue pas d'une file vide : on finit par tout valider
 sans regarder.
 
-**Contrôle du total imprimé.** Quand le bordereau porte un total d'exemplaires
-(« Qté : 45 », « QUANTITE : 7 »), l'app le compare à la somme des lignes lues.
-C'est le seul contrôle capable de détecter une ligne entière sautée par les deux
-moteurs à la fois — la double lecture, elle, ne voit rien quand ils omettent la
-même chose. L'avertissement est indicatif et non bloquant : sur un bordereau
-multi-échéances, le total imprimé couvre souvent plus que les pages
+**Un ISBN, une ligne.** Le même ISBN vu deux fois n'est pas une commande de deux
+lots : c'est le même bloc du bordereau lu deux fois. Les lignes sont réunies sans
+rien demander, et l'app garde **la plus grande** quantité des deux, jamais leur
+somme — additionner ferait chercher un exemplaire qui n'existe pas, et le carton
+finirait en manque imaginaire.
+
+**Contrôle du total imprimé.** Quand le bordereau porte un total d'exemplaires ou
+de références (« QUANTITE: 23 », « ARTICLES: 19 »), l'app le compare à ce qu'elle
+a lu, dans les deux sens. En moins, c'est une ligne sautée par les deux moteurs à
+la fois — la double lecture, elle, ne voit rien quand ils omettent la même chose.
+En trop, c'est un complément de libellé passé pour un titre, ou un ISBN qui
+figurait réellement deux fois. L'avertissement est indicatif et non bloquant : sur
+un bordereau multi-échéances, le total imprimé couvre souvent plus que les pages
 photographiées.
+
+Le prompt prend soin de distinguer ce total de la ligne « TOTAL COMMANDE
+REFERENCE ... ARTICLES 77 » imprimée juste à côté sur les bordereaux Hachette :
+celle-là couvre la commande entière, toutes livraisons confondues, et ferait
+sonner l'alarme à chaque carton.
 
 Le prompt impose par ailleurs aux modèles de renvoyer une valeur vide plutôt que
 de compléter de mémoire — un ISBN plausible mais inventé serait le pire des cas,
@@ -86,10 +98,14 @@ Hachette, dont les mises en page n'ont rien de commun :
   (`20 3087 8`, `45 0505 0`). Le prompt les exclut du champ `isbn` et les
   extrait dans un champ `reference` à part, où elles servent de seconde clé
   d'appariement entre les deux lectures.
-- **Section « NON-SERVI DE VOTRE LIVRAISON »** : ces articles ne sont pas dans
-  le carton. Ils sont extraits dans une liste séparée, jamais dans les lignes à
-  scanner. Sans cette distinction, l'opérateur chercherait un livre absent et
-  finirait avec un faux manque au récapitulatif.
+- **Un intertitre coupe le tableau en deux.** `R E P O N S E S`, `NON-SERVI DE
+  VOTRE LIVRAISON`, `MANQUANT`, `Reliquat` : à partir de là et jusqu'au bas du
+  tableau, plus rien n'est dans le carton, même si les articles portent une
+  quantité et ressemblent en tout point à ceux du dessus. Ils sont extraits dans
+  une liste séparée, jamais dans les lignes à scanner, et la seconde ligne y
+  porte le motif (`A PARAITRE`, `EPUISE`) et non un complément de titre. Sans
+  cette distinction, l'opérateur chercherait un livre absent et finirait avec un
+  faux manque au récapitulatif.
 - **Annotations manuscrites** (cercles du réceptionnaire autour des quantités) :
   le prompt impose de recopier l'imprimé, jamais le manuscrit.
 
@@ -142,8 +158,8 @@ Quatre mesures se cumulent contre ça :
    voir, ce n'est pas un titre mal lu, c'est un code rattaché au mauvais libellé.
    La ligne est signalée « ISBN/titre décalés » et bloque, avec un rappel de la
    structure en deux lignes dans l'écran d'arbitrage.
-4. **Le compte des références imprimé en pied de bordereau** (« ARTICLES 8 ») est
-   comparé au nombre de lignes lues. Plus de lignes que de références annoncées,
+4. **Le compte des références imprimé en pied de bordereau** (« ARTICLES: 19 »)
+   est comparé au nombre de lignes lues. Plus de lignes que de références annoncées,
    c'est le signe qu'un complément est passé pour un titre — le seul contrôle qui
    attrape le cas où les deux moteurs se trompent pareil.
 

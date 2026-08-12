@@ -71,7 +71,7 @@ export const EXTRACTION_SCHEMA = {
     not_delivered: {
       type: "array",
       description:
-        "Articles d'une section « NON-SERVI », « MANQUANT » ou « Reliquat » : ils ne sont PAS dans le carton.",
+        "Tous les articles situés APRÈS un intertitre « RÉPONSES », « NON-SERVI », « MANQUANT » ou « Reliquat », jusqu'au bas du tableau : ils ne sont PAS dans le carton, même s'ils portent une quantité.",
       items: {
         type: "object",
         properties: {
@@ -82,7 +82,7 @@ export const EXTRACTION_SCHEMA = {
           reason: {
             type: "string",
             description:
-              "Motif imprimé tel quel (« MANQUANT PAS NOTE », « épuisé », « à paraître »). Chaîne vide si absent.",
+              "Motif imprimé tel quel, généralement sur la ligne de l'ISBN, là où un article livré porterait un complément de titre (« A PARAITRE », « EPUISE », « MANQUANT PAS NOTE »). Chaîne vide si absent.",
           },
         },
         required: ["isbn", "title", "publisher", "quantity", "reason"],
@@ -92,11 +92,12 @@ export const EXTRACTION_SCHEMA = {
     declared_total_quantity: {
       type: "integer",
       description:
-        "Total d'exemplaires imprimé sur le document (« Qté : 45 », « QUANTITE : 7 »). 0 si absent.",
+        "Total d'exemplaires du récapitulatif de LIVRAISON (« QUANTITE: 23 », « Qté : 45 »). Jamais celui d'une ligne « TOTAL COMMANDE », qui couvre toute la commande. 0 si absent.",
     },
     declared_total_articles: {
       type: "integer",
-      description: "Nombre de références imprimé sur le document (« Nbre article(s) »). 0 si absent.",
+      description:
+        "Nombre de références du récapitulatif de LIVRAISON (« ARTICLES: 19 », « Nbre article(s) »), hors section « RÉPONSES ». Jamais celui d'une ligne « TOTAL COMMANDE ». 0 si absent.",
     },
   },
   required: [
@@ -180,15 +181,35 @@ Ces bordereaux varient fortement d'un distributeur à l'autre : l'ordre des colo
 
 Attention : une quantité manquante n'est jamais implicite. Si la case est vide sur la ligne du titre, mets 0 — ne recopie pas la quantité de l'article précédent.
 
-ARTICLES NON SERVIS
-Certains bordereaux comportent une section séparée, sous un titre du genre « NON-SERVI DE VOTRE LIVRAISON », « NON SERVI », « MANQUANT », « Reliquat » ou « Reste à livrer ». Ces articles ne sont PAS dans le carton.
-Ne les place jamais dans \`lines\`. Mets-les dans \`not_delivered\`, avec le motif imprimé s'il y en a un.
+ARTICLES NON SERVIS — TOUT CE QUI SUIT UN INTERTITRE
+Le tableau se termine souvent par un intertitre, seul sur sa ligne, souvent centré et parfois espacé lettre à lettre : « R E P O N S E S », « REPONSES », « NON-SERVI DE VOTRE LIVRAISON », « NON SERVI », « MANQUANT », « Reliquat », « Reste à livrer ».
+
+À partir de cet intertitre, et jusqu'au bas du tableau, PLUS AUCUN article n'est dans le carton. Tous ceux qui suivent vont dans \`not_delivered\`, jamais dans \`lines\`, même s'ils portent une quantité et ressemblent en tout point aux articles du dessus.
+
+Dans cette section, la ligne sans quantité ne porte pas un complément de titre mais le MOTIF : « A PARAITRE », « EPUISE », « MANQUANT PAS NOTE », « NON PARU ». Mets-le dans \`reason\`, pas dans \`title\`.
+
+Exemple :
+
+    75 6707 0          1   DICTIONNAIRE LAROUSSE JUNIOR ET SON DICTIONN
+    9782036068926                LIVRE ELEV        LAR.DICTIONNAIR
+                     R E P O N S E S
+    85 8015 4          1   COLORIAGES MYSTERES DISNEY SPECIAL FILM ROI
+    9782017378433            A PARAITRE
+
+Le dictionnaire est dans \`lines\` : il est dans le carton. Les coloriages Disney sont dans \`not_delivered\`, avec reason « A PARAITRE » : ils ne le sont pas, et l'opérateur ne doit pas les chercher.
 
 TOTAUX
-Si le document imprime un total d'exemplaires ou de références (« Qté : 45 », « QUANTITE : 7 », « Nbre article(s) : 36 », « ARTICLES 3 »), recopie ces nombres dans declared_total_quantity et declared_total_articles. Sinon 0.
+Le pied du bordereau porte un récapitulatif de LA LIVRAISON, en général sous la forme « ARTICLES: 19 », « QUANTITE: 23 », « VOLUMES: 23 ». Ce sont ces nombres-là qu'il faut recopier dans declared_total_articles et declared_total_quantity.
+
+Attention au piège : une ligne « TOTAL COMMANDE REFERENCE ... : 219 6497   ARTICLES 77 » peut figurer juste à côté. Ce 77 est le total de la COMMANDE entière, toutes livraisons confondues — il ne décrit pas ce bordereau. Ne le recopie jamais. En cas de doute entre deux nombres, retiens celui qui correspond au nombre d'articles que tu viens réellement de lire.
+
+Ces totaux ne comptent que les articles livrés : ceux de la section « RÉPONSES » ou « NON SERVI » en sont exclus.
+
+Si le document n'imprime aucun récapitulatif, mets 0.
 
 RÈGLES IMPÉRATIVES
 - Une entrée par article imprimé, dans l'ordre du document.
+- Un même ISBN n'apparaît qu'une fois dans \`lines\`. Si tu t'apprêtes à le sortir deux fois, c'est que tu as lu deux fois le même bloc : n'en garde qu'un.
 - N'invente jamais une valeur. Cellule vide, illisible ou barrée → chaîne vide, ou 0.
 - Ne complète pas un ISBN de mémoire : recopie strictement les chiffres visibles, sans corriger la clé de contrôle. Une lecture fidèle mais fausse est utile ; une lecture « réparée » ne l'est pas.
 - \`isbn\` : chiffres uniquement, tirets et espaces retirés.
