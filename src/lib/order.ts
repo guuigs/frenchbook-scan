@@ -139,50 +139,6 @@ export function findExtraIndex(session: CartonSession, isbn: string): number {
   return session.extras.findIndex((extra) => normalizeIsbn(extra.isbn) === target);
 }
 
-/** Somme des exemplaires lus sur le bordereau, hors articles non servis. */
-export function readTotalQuantity(session: CartonSession): number {
-  return session.lines.reduce((sum, line) => sum + line.quantityDelivered, 0);
-}
-
-/**
- * Écart entre le total imprimé sur le bordereau et la somme des lignes lues.
- * Négatif quand la lecture en totalise plus que le bon n'en annonce.
- *
- * C'est le seul contrôle capable de détecter une ligne entière sautée par les
- * deux moteurs à la fois — la double lecture ne voit rien quand ils omettent la
- * même chose. L'écart négatif compte autant : c'est lui qui rattrape un même
- * ISBN réellement présent deux fois sur le papier, que la consolidation vient de
- * ramener à une seule ligne.
- *
- * Purement indicatif : sur un bordereau multi-échéances ou multi-colis, le total
- * imprimé couvre souvent plus que les pages photographiées.
- */
-export function declaredQuantityGap(session: CartonSession): number | null {
-  if (session.declaredTotalQuantity <= 0) return null;
-  const gap = session.declaredTotalQuantity - readTotalQuantity(session);
-  return gap !== 0 ? gap : null;
-}
-
-/**
- * Écart entre le nombre de références imprimé sur le bordereau et le nombre de
- * lignes lues. Négatif quand la lecture en a trouvé de trop.
- *
- * C'est le contrôle qui attrape le travers propre à ces bordereaux : un article
- * y tient sur deux lignes, et la seconde porte parfois un complément de titre
- * (« LFF B1 », « NED », « LE AUDIO »). Un moteur qui prend ce complément pour un
- * titre ouvre un article de plus — et décale les ISBN de tout ce qui suit. Le
- * compte des références imprimé en pied de bordereau le dit immédiatement.
- *
- * Indicatif, comme l'écart de quantités : sur un bon multi-colis ou dont toutes
- * les pages n'ont pas été photographiées, le total imprimé couvre plus que ce
- * qui a été lu.
- */
-export function declaredArticlesGap(session: CartonSession): number | null {
-  if (session.declaredTotalArticles <= 0) return null;
-  const gap = session.declaredTotalArticles - session.lines.length;
-  return gap !== 0 ? gap : null;
-}
-
 export function sessionTitle(session: CartonSession): string {
   return (session.supplier ?? "").trim() || "Carton en cours";
 }

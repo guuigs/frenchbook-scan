@@ -7,13 +7,10 @@ import { formatIsbn } from "@/lib/isbn";
 import {
   autoFixedLines,
   blockingIssues,
-  declaredArticlesGap,
-  declaredQuantityGap,
   displayPublisher,
   infoIssues,
   isReviewComplete,
   needsReview,
-  readTotalQuantity,
   totalExpected,
 } from "@/lib/order";
 import { ISSUE_LABELS, type OrderLine } from "@/lib/types";
@@ -49,26 +46,7 @@ export function OrderReview() {
   );
 
   const clean = isReviewComplete(session);
-  const gap = declaredQuantityGap(session);
-  const articlesGap = declaredArticlesGap(session);
   const autoFixed = autoFixedLines(session);
-
-  /**
-   * Un écart avec les totaux imprimés ne bloque pas — sur un bon multi-colis il
-   * est normal — mais il ne doit pas se franchir sans avoir été lu. La dernière
-   * porte avant le scan le rappelle et change de libellé.
-   */
-  const mismatch =
-    [
-      gap !== null
-        ? `Le bon annonce ${session.declaredTotalQuantity} exemplaires, la lecture en totalise ${readTotalQuantity(session)}.`
-        : null,
-      articlesGap !== null
-        ? `Il annonce ${session.declaredTotalArticles} références, la lecture en a ${session.lines.length}.`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" ") || null;
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -99,30 +77,6 @@ export function OrderReview() {
             {autoFixed.length === 1
               ? "1 ISBN divergent tranché par sa clé de contrôle."
               : `${autoFixed.length} ISBN divergents tranchés par leur clé de contrôle.`}
-          </Note>
-        ) : null}
-
-        {/*
-          Ces deux écarts sont les seuls contrôles qui voient une ligne oubliée
-          par les deux moteurs à la fois. Ils sont en rouge et rappelés à la
-          validation : passer au scan sans les avoir regardés, c'est compter un
-          carton sur un bon amputé.
-        */}
-        {gap !== null ? (
-          <Note tone="danger">
-            Le bon annonce {session.declaredTotalQuantity} exemplaires, la lecture en totalise{" "}
-            {readTotalQuantity(session)}.
-            {gap < 0 ? " Un même ISBN figurait peut-être deux fois sur le bon." : ""}
-          </Note>
-        ) : null}
-
-        {articlesGap !== null ? (
-          <Note tone="danger">
-            Le bon annonce {session.declaredTotalArticles} références, la lecture en a{" "}
-            {session.lines.length}.
-            {articlesGap < 0
-              ? " Une seconde ligne de libellé a peut-être été prise pour un titre."
-              : " Une ligne a peut-être été sautée."}
           </Note>
         ) : null}
 
@@ -202,12 +156,8 @@ export function OrderReview() {
 
       {dialog === "validate" ? (
         <Dialog
-          title={mismatch ? "Le bon ne tombe pas juste" : "Passer au scan ?"}
-          body={
-            mismatch
-              ? `${mismatch} Le comptage se fera sur la lecture : ${session.lines.length} titres, ${totalExpected(session)} exemplaires.`
-              : `${session.lines.length} titres, ${totalExpected(session)} exemplaires attendus.`
-          }
+          title="Passer au scan ?"
+          body={`${session.lines.length} titres, ${totalExpected(session)} exemplaires attendus.`}
           onDismiss={() => setDialog(null)}
         >
           <Button
@@ -216,10 +166,10 @@ export function OrderReview() {
               validateOrder();
             }}
           >
-            {mismatch ? "Scanner malgré l’écart" : "Commencer le scan"}
+            Commencer le scan
           </Button>
           <Button variant="secondary" onClick={() => setDialog(null)}>
-            {mismatch ? "Revoir le bon" : "Revoir"}
+            Revoir
           </Button>
         </Dialog>
       ) : null}

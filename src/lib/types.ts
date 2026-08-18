@@ -132,9 +132,20 @@ export interface CartonSession {
   extras: ExtraItem[];
   notDelivered: NotDeliveredItem[];
   /**
-   * Totaux imprimés sur le bordereau, quand il en porte. Servent de contrôle de
-   * cohérence : c'est le seul moyen de détecter une ligne entière sautée par
-   * les deux moteurs à la fois.
+   * Totaux imprimés sur le bordereau, relevés à titre de référence.
+   *
+   * Ils ont servi un temps à contrôler la somme des lignes lues. Ce contrôle a
+   * été retiré : le récapitulatif de livraison couvre l'expédition entière, et
+   * elle porte souvent plusieurs colis (« Nbre colis : 2 »). Le carton en main
+   * n'en est qu'un — la somme de ses lignes est donc légitimement inférieure au
+   * total imprimé, et l'écart se déclenchait sur des lectures parfaitement
+   * justes. Une alarme qui se trompe souvent apprend à ignorer toutes les
+   * alarmes, y compris la clé ISBN et la divergence entre moteurs, qui elles
+   * sont fiables.
+   *
+   * Le découpage d'un article sur deux lignes, que l'écart de références
+   * servait aussi à détecter, est couvert par les signalements `alignment` et
+   * `duplicateTitle` — qui ne dépendent d'aucun total imprimé.
    */
   declaredTotalQuantity: number;
   declaredTotalArticles: number;
