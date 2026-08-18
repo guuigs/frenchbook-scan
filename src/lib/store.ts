@@ -9,7 +9,14 @@ import { prepareForUpload } from "./images";
 import { clearPages, savePage } from "./pages";
 import { normalizeIsbn } from "./isbn";
 import { migrateSession, toExtractedPage } from "./payload";
-import { expected, findExtraIndex, findLineIndex, isComplete, isReviewComplete } from "./order";
+import {
+  expected,
+  findExtraIndex,
+  findLineIndex,
+  isComplete,
+  isReviewComplete,
+  mergeDuplicateIsbns,
+} from "./order";
 import { emptySession } from "./types";
 import type {
   CartonSession,
@@ -303,12 +310,21 @@ export const useCarton = create<CartonState>()(
 
       // MARK: - Phase 2 — contrôle des lignes
 
+      /*
+       * La fusion qui suit n'est pas une commodité : corriger un ISBN peut le
+       * rendre identique à celui d'une ligne voisine, et la recherche au scan
+       * s'arrêtant à la première correspondance, la seconde deviendrait
+       * injoignable — le carton se clôturerait sur un manque impossible à
+       * solder.
+       */
       resolveLine: (id, updated) =>
         setState((state) => ({
           session: {
             ...state.session,
-            lines: state.session.lines.map((line) =>
-              line.id === id ? { ...updated, issues: [] } : line,
+            lines: mergeDuplicateIsbns(
+              state.session.lines.map((line) =>
+                line.id === id ? { ...updated, issues: [] } : line,
+              ),
             ),
           },
         })),
@@ -351,8 +367,12 @@ export const useCarton = create<CartonState>()(
       },
 
       validateOrder: () => {
-        if (!isReviewComplete(getState().session)) return;
-        setState({ phase: "scanning" });
+        const state = getState();
+        if (!isReviewComplete(state.session)) return;
+        setState({
+          phase: "scanning",
+          session: { ...state.session, lines: mergeDuplicateIsbns(state.session.lines) },
+        });
       },
 
       // MARK: - Phase 3 — comptage physique

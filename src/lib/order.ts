@@ -139,6 +139,51 @@ export function findExtraIndex(session: CartonSession, isbn: string): number {
   return session.extras.findIndex((extra) => normalizeIsbn(extra.isbn) === target);
 }
 
+/**
+ * Fusionne les lignes qui portent le même ISBN, en n'en gardant qu'une.
+ *
+ * Un ISBN identifie un livre et un seul : deux lignes qui le partagent sont
+ * forcément la même, dédoublée par un découpage d'article raté à la lecture.
+ *
+ * Sans cette fusion, la seconde ligne devient injoignable au scan — la
+ * recherche par ISBN s'arrête à la première — et le carton se clôture sur un
+ * manque fantôme qu'aucun code-barres ne peut solder. C'est le cas de figure
+ * qui apparaît juste après une correction d'ISBN dans l'écran de contrôle,
+ * quand la valeur rectifiée rejoint celle d'une ligne voisine.
+ *
+ * La quantité retenue est la plus grande, jamais la somme : un article dédoublé
+ * porte la même quantité des deux côtés, l'additionner la doublerait.
+ */
+export function mergeDuplicateIsbns(lines: OrderLine[]): OrderLine[] {
+  const result: OrderLine[] = [];
+
+  for (const line of lines) {
+    const key = normalizeIsbn(line.isbn);
+    const index = key ? result.findIndex((other) => normalizeIsbn(other.isbn) === key) : -1;
+
+    if (index < 0) {
+      result.push(line);
+      continue;
+    }
+
+    const target = result[index];
+    result[index] = {
+      ...target,
+      quantityOrdered: Math.max(target.quantityOrdered, line.quantityOrdered),
+      quantityDelivered: Math.max(target.quantityDelivered, line.quantityDelivered),
+      title: target.title || line.title,
+      publisher: target.publisher || line.publisher,
+      reference: target.reference || line.reference,
+      // Un comptage déjà fait ne doit pas disparaître dans la fusion.
+      counted: Math.max(target.counted, line.counted),
+      damaged: Math.max(target.damaged, line.damaged),
+      issues: [...target.issues, ...line.issues],
+    };
+  }
+
+  return result;
+}
+
 export function sessionTitle(session: CartonSession): string {
   return (session.supplier ?? "").trim() || "Carton en cours";
 }
