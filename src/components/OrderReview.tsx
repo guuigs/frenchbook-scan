@@ -8,10 +8,13 @@ import {
   autoFixedLines,
   blockingIssues,
   displayPublisher,
+  expected,
   infoIssues,
   isReviewComplete,
   needsReview,
   totalExpected,
+  variantGroups,
+  variantIssue,
 } from "@/lib/order";
 import { ISSUE_LABELS, type OrderLine } from "@/lib/types";
 import { ActionBar, Button, Dialog, Label, Note, Tag } from "./ui";
@@ -31,19 +34,27 @@ export function OrderReview() {
   const resolveLine = useCarton((state) => state.resolveLine);
   const deleteLine = useCarton((state) => state.deleteLine);
   const addManualLine = useCarton((state) => state.addManualLine);
+  const confirmVariant = useCarton((state) => state.confirmVariant);
   const validateOrder = useCarton((state) => state.validateOrder);
   const abandonCarton = useCarton((state) => state.abandonCarton);
 
   const [editing, setEditing] = useState<OrderLine | null>(null);
   const [dialog, setDialog] = useState<"validate" | "abandon" | null>(null);
 
+  /*
+   * Chaque ligne n'apparaît qu'à un seul endroit : ce qui réclame un arbitrage,
+   * ce qui n'attend qu'une vérification de variante, et le reste. Une ligne
+   * listée deux fois se ferait valider une fois et relire l'autre.
+   */
   const { pending, confirmed } = useMemo(
     () => ({
       pending: session.lines.filter(needsReview),
-      confirmed: session.lines.filter((line) => !needsReview(line)),
+      confirmed: session.lines.filter((line) => !needsReview(line) && !variantIssue(line)),
     }),
     [session.lines],
   );
+
+  const variants = useMemo(() => variantGroups(session), [session]);
 
   const clean = isReviewComplete(session);
   const autoFixed = autoFixedLines(session);
@@ -109,6 +120,49 @@ export function OrderReview() {
                 <LineRow key={line.id} line={line} onSelect={() => setEditing(line)} />
               ))}
             </ul>
+          </section>
+        ) : null}
+
+        {variants.length > 0 ? (
+          <section>
+            <Label>
+              Vérifier les variantes · {variants.reduce((sum, group) => sum + group.lines.length, 0)}
+            </Label>
+            <div className="space-y-3">
+              {variants.map((group) => (
+                <div key={group.key} className="overflow-hidden rounded-[10px] border border-border">
+                  <p className="border-b border-border bg-subtle px-4 py-2.5 text-[14px] font-medium">
+                    {group.title || "Titre non lu"}
+                  </p>
+                  <ul>
+                    {group.lines.map((line) => (
+                      <li
+                        key={line.id}
+                        className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0"
+                      >
+                        <span className="min-w-0 flex-1 font-mono text-[13px] tabular-nums" translate="no">
+                          {line.isbn ? formatIsbn(line.isbn) : "ISBN non lu"}
+                        </span>
+                        <span className="font-mono text-[13px] font-medium tabular-nums">
+                          ×{expected(line)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => confirmVariant(line.id)}
+                          className="h-9 shrink-0 rounded-[8px] border border-border px-3 text-[13px] hover:border-border-strong active:bg-subtle"
+                        >
+                          Valider
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <p className="px-1 pt-2 text-[12px] text-muted">
+              Un même titre sur plusieurs ISBN : le plus souvent les tomes d’une série. Validez
+              chaque ISBN après l’avoir retrouvé sur le bon.
+            </p>
           </section>
         ) : null}
 

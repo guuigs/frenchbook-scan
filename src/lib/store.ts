@@ -60,6 +60,7 @@ interface CartonState {
   resolveLine: (id: string, updated: OrderLine) => void;
   deleteLine: (id: string) => void;
   addManualLine: () => OrderLine;
+  confirmVariant: (id: string) => void;
   validateOrder: () => void;
 
   handleScan: (code: string) => ScanOutcome;
@@ -366,6 +367,27 @@ export const useCarton = create<CartonState>()(
         return line;
       },
 
+      /**
+       * Lève le signalement de variante sur une seule ligne.
+       *
+       * Un ISBN à la fois : sur une série dont les trois tomes portent le même
+       * libellé, valider le groupe d'un geste reviendrait à ne rien vérifier.
+       */
+      confirmVariant: (id) =>
+        setState((state) => ({
+          session: {
+            ...state.session,
+            lines: state.session.lines.map((line) =>
+              line.id === id
+                ? {
+                    ...line,
+                    issues: line.issues.filter((entry) => entry.kind !== "duplicateTitle"),
+                  }
+                : line,
+            ),
+          },
+        })),
+
       validateOrder: () => {
         const state = getState();
         if (!isReviewComplete(state.session)) return;
@@ -629,6 +651,20 @@ function makeDemoSession(): CartonSession {
           candidateB: "9782072678455",
         },
       ]),
+      // Deux tomes d'une série édités sous le même libellé : à vérifier, pas à
+      // trancher.
+      ...["9782075036948", "9782075036955"].map((isbn) =>
+        demoLine(isbn, "HARRY POTTER", "GALLIMARD JEUNE", 2, 2, 1, [
+          {
+            id: crypto.randomUUID(),
+            field: "title",
+            kind: "duplicateTitle",
+            severity: "info",
+            candidateA: "HARRY POTTER",
+            candidateB: "9782075036948 / 9782075036955",
+          },
+        ]),
+      ),
       // Même ISBN des deux côtés, deux titres sans rapport : décalage de bloc.
       demoLine("9782070179268", "BERSERK T43 COLLECTOR", "GLENAT", 6, 6, 1, [
         {

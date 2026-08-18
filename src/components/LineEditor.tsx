@@ -122,10 +122,10 @@ export function LineEditor({
           ) : null}
 
           {duplicateTitle ? (
-            <Note tone="danger">
+            <Note tone="neutral">
               Ce titre porte {duplicateTitle.candidateB.split(" / ").length} ISBN différents (
-              {duplicateTitle.candidateB}). Un libellé a sans doute été recopié d’un bloc à
-              l’autre : retrouvez sur la photo le titre qui va avec cet ISBN.
+              {duplicateTitle.candidateB}). C’est le cas normal d’une série ou d’un livre édité en
+              plusieurs façonnages : vérifiez sur la photo que celui-ci va bien avec ce titre.
             </Note>
           ) : null}
 

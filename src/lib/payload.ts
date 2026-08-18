@@ -111,7 +111,10 @@ const BLOCKING_FIELDS: LineField[] = ["isbn", "quantityOrdered", "quantityDelive
  */
 function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
   if (kind === "autoFixed" || kind === "merged" || kind === "singleSource") return "info";
-  if (kind === "alignment" || kind === "duplicateTitle") return "blocking";
+  // Un même titre sur plusieurs ISBN est le cas normal d'une série ou de
+  // variantes : cela se vérifie, cela n'arrête pas.
+  if (kind === "duplicateTitle") return "info";
+  if (kind === "alignment") return "blocking";
   if (kind === "missing" && field === "title") return "info";
   return BLOCKING_FIELDS.includes(field) ? "blocking" : "info";
 }

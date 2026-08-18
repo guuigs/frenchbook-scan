@@ -184,6 +184,52 @@ export function mergeDuplicateIsbns(lines: OrderLine[]): OrderLine[] {
   return result;
 }
 
+/**
+ * Le signalement « même titre, plusieurs ISBN », tant qu'il n'a pas été vérifié.
+ */
+export function variantIssue(line: OrderLine): FieldIssue | undefined {
+  return line.issues.find((entry) => entry.kind === "duplicateTitle");
+}
+
+export interface VariantGroup {
+  /** Les ISBN du groupe, dans l'ordre où ils ont été relevés. */
+  key: string;
+  title: string;
+  lines: OrderLine[];
+}
+
+/**
+ * Les titres portés par plusieurs ISBN, regroupés pour vérification.
+ *
+ * C'est le cas courant d'une série — trois tomes édités sous le même libellé —
+ * ou d'un même livre en deux façonnages. Rien n'y est anormal : il n'y a qu'à
+ * confirmer que chaque ISBN est bien celui d'un volume distinct. D'où un bloc à
+ * part, qui ne bloque pas le passage au scan, et une validation ISBN par ISBN :
+ * les libellés étant souvent identiques au caractère près, seul le code
+ * distingue les lignes entre elles.
+ */
+export function variantGroups(session: CartonSession): VariantGroup[] {
+  const groups = new Map<string, VariantGroup>();
+
+  for (const line of session.lines) {
+    // Une ligne qui réclame déjà un arbitrage est traitée là-bas : l'écran
+    // d'édition remet tout à plat, y compris le signalement de variante.
+    if (needsReview(line)) continue;
+
+    const entry = variantIssue(line);
+    if (!entry) continue;
+
+    // La clé est la liste d'ISBN portée par le signalement : elle est identique
+    // sur toutes les lignes d'un même groupe, et le reste après qu'une ligne a
+    // été validée et retirée.
+    const group = groups.get(entry.candidateB);
+    if (group) group.lines.push(line);
+    else groups.set(entry.candidateB, { key: entry.candidateB, title: line.title, lines: [line] });
+  }
+
+  return Array.from(groups.values());
+}
+
 export function sessionTitle(session: CartonSession): string {
   return (session.supplier ?? "").trim() || "Carton en cours";
 }

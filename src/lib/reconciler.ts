@@ -584,7 +584,7 @@ export function auditStructure(lines: OrderLine[]): OrderLine[] {
 
     for (const line of group) {
       line.issues.push(
-        issue("title", "duplicateTitle", "blocking", line.title, isbns.join(" / ")),
+        issue("title", "duplicateTitle", "info", line.title, isbns.join(" / ")),
       );
     }
   }
