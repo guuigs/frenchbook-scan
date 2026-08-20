@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { del, get, set } from "idb-keyval";
 
-import { auditStructure, consolidate, mergeNotDelivered, reconcile } from "./reconciler";
+import { auditStructure, consolidate, mergeNotDelivered, toOrderLines } from "./reconciler";
 import { prepareForUpload } from "./images";
 import { clearPages, savePage } from "./pages";
 import { normalizeIsbn } from "./isbn";
@@ -21,7 +21,7 @@ import { emptySession } from "./types";
 import type {
   CartonSession,
   ExtractedNotDelivered,
-  OcrPageResponse,
+  ExtractedPage,
   OrderLine,
 } from "./types";
 
@@ -49,7 +49,6 @@ interface CartonState {
   session: CartonSession;
   progress: OcrProgress | null;
   error: string | null;
-  degraded: boolean;
   soundEnabled: boolean;
 
   setError: (error: string | null) => void;
@@ -104,27 +103,27 @@ class ReadError extends Error {
 }
 
 /**
- * Une page perdue, c'est deux appels OCR déjà payés et une attente à
- * recommencer. Sur un incident passager — coupure de wifi d'entrepôt, 502 de
- * passage, quota momentané — on retente une fois avant d'abandonner le carton.
+ * Une page perdue, c'est un appel OCR déjà payé et une attente à recommencer.
+ * Sur un incident passager — coupure de wifi d'entrepôt, 502 de passage, quota
+ * momentané — on retente une fois avant d'abandonner le carton.
  */
-async function readPage(dataUrl: string, doubleCheck: boolean): Promise<OcrPageResponse> {
+async function readPage(dataUrl: string): Promise<ExtractedPage> {
   try {
-    return await readPageOnce(dataUrl, doubleCheck);
+    return await readPageOnce(dataUrl);
   } catch (error) {
     if (!(error instanceof ReadError) || !error.transient) throw error;
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    return readPageOnce(dataUrl, doubleCheck);
+    return readPageOnce(dataUrl);
   }
 }
 
-async function readPageOnce(dataUrl: string, doubleCheck: boolean): Promise<OcrPageResponse> {
+async function readPageOnce(dataUrl: string): Promise<ExtractedPage> {
   let response: Response;
   try {
     response = await fetch("/api/ocr", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: dataUrl, doubleCheck }),
+      body: JSON.stringify({ image: dataUrl }),
     });
   } catch {
     throw new ReadError("Réseau indisponible. Vérifiez la connexion de l’appareil.", true);
@@ -139,33 +138,16 @@ async function readPageOnce(dataUrl: string, doubleCheck: boolean): Promise<OcrP
       response.status >= 500 || response.status === 429,
     );
   }
-  if (!payload || typeof payload.engineA !== "object" || payload.engineA === null) {
+  if (!payload || typeof payload.page !== "object" || payload.page === null) {
     throw new Error("Réponse illisible du serveur. Rechargez la page et réessayez.");
   }
 
-  const engineA = toExtractedPage(payload.engineA);
-  if (engineA.lines.length === 0) {
+  const page = toExtractedPage(payload.page);
+  if (page.lines.length === 0) {
     throw new Error("Aucune ligne de livre n'a été détectée sur cette page.");
   }
 
-  /*
-   * Un second moteur qui répond sans avoir rien lu n'est pas un second avis :
-   * c'est une panne silencieuse. Le compter comme une lecture valide donnait
-   * une page entière de lignes « vues par un seul moteur », toutes marquées
-   * comme recoupées alors que rien ne l'était. On l'écarte, et la page est
-   * annoncée dégradée — ce qu'elle est.
-   */
-  const rawB =
-    payload.engineB && typeof payload.engineB === "object"
-      ? toExtractedPage(payload.engineB)
-      : null;
-  const engineB = rawB && rawB.lines.length > 0 ? rawB : null;
-
-  return {
-    engineA,
-    engineB,
-    degraded: payload.degraded === true || engineB === null,
-  };
+  return page;
 }
 
 /**
@@ -201,7 +183,6 @@ export const useCarton = create<CartonState>()(
       session: emptySession(),
       progress: null,
       error: null,
-      degraded: false,
       soundEnabled: true,
 
       setError: (error) => setState({ error }),
@@ -216,14 +197,12 @@ export const useCarton = create<CartonState>()(
         setState({
           phase: "processing",
           error: null,
-          degraded: false,
           progress: { pageIndex: 0, pageCount: files.length, stage: "Préparation…" },
         });
 
         const notDeliveredRaw: ExtractedNotDelivered[] = [];
         let supplier = "";
         let reference = "";
-        let degraded = false;
         let declaredQuantity = 0;
         let declaredArticles = 0;
         let done = 0;
@@ -240,29 +219,16 @@ export const useCarton = create<CartonState>()(
             const dataUrl = await prepareForUpload(file);
             await savePage(index, dataUrl);
 
-            const result = await readPage(dataUrl, true);
+            const page = await readPage(dataUrl);
 
-            degraded = degraded || result.degraded;
-            supplier = supplier || result.engineA.supplier || result.engineB?.supplier || "";
-            reference = reference || result.engineA.reference || result.engineB?.reference || "";
-
-            // Les articles non servis viennent des deux moteurs : on prend
-            // l'union, `mergeNotDelivered` dédoublonne ensuite.
-            notDeliveredRaw.push(...result.engineA.notDelivered);
-            if (result.engineB) notDeliveredRaw.push(...result.engineB.notDelivered);
+            supplier = supplier || page.supplier || "";
+            reference = reference || page.reference || "";
+            notDeliveredRaw.push(...page.notDelivered);
 
             // Les totaux sont imprimés au niveau du document, souvent répétés
             // sur chaque page : on retient le plus grand vu.
-            declaredQuantity = Math.max(
-              declaredQuantity,
-              result.engineA.declaredTotalQuantity,
-              result.engineB?.declaredTotalQuantity ?? 0,
-            );
-            declaredArticles = Math.max(
-              declaredArticles,
-              result.engineA.declaredTotalArticles,
-              result.engineB?.declaredTotalArticles ?? 0,
-            );
+            declaredQuantity = Math.max(declaredQuantity, page.declaredTotalQuantity);
+            declaredArticles = Math.max(declaredArticles, page.declaredTotalArticles);
 
             done += 1;
             setState({
@@ -276,7 +242,7 @@ export const useCarton = create<CartonState>()(
               },
             });
 
-            return reconcile(result.engineA, result.engineB, index);
+            return toOrderLines(page, index);
           });
 
           const lines = auditStructure(consolidate(perPage));
@@ -296,7 +262,6 @@ export const useCarton = create<CartonState>()(
               declaredTotalArticles: declaredArticles,
             },
             progress: null,
-            degraded,
             phase: "review",
           });
         } catch (error) {
@@ -497,7 +462,6 @@ export const useCarton = create<CartonState>()(
           session: emptySession(),
           progress: null,
           error: null,
-          degraded: false,
         });
       },
 
@@ -508,7 +472,6 @@ export const useCarton = create<CartonState>()(
           session: emptySession(),
           progress: null,
           error: null,
-          degraded: false,
         });
       },
 
@@ -518,7 +481,6 @@ export const useCarton = create<CartonState>()(
           session: makeDemoSession(),
           progress: null,
           error: null,
-          degraded: false,
         });
       },
     }),
@@ -531,7 +493,7 @@ export const useCarton = create<CartonState>()(
        * manquants — et l'opérateur perdrait son comptage en cours sur une
        * erreur incompréhensible.
        */
-      version: 3,
+      version: 4,
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
@@ -542,7 +504,6 @@ export const useCarton = create<CartonState>()(
       partialize: (state) => ({
         phase: state.phase,
         session: state.session,
-        degraded: state.degraded,
         soundEnabled: state.soundEnabled,
       }),
       onRehydrateStorage: () => (state) => {
@@ -586,9 +547,9 @@ function demoLine(
  * Bon fictif pour parcourir tout le flux sans photo ni appel Mistral.
  *
  * Les anomalies sont volontaires et couvrent les deux régimes : ce qui doit
- * remonter à l'opérateur — quantités divergentes, clé ISBN cassée, ISBN
- * rattaché au mauvais titre — et ce qui doit rester une simple mention —
- * titre lu différemment, ligne non recoupée, ISBN tranché par la clé.
+ * remonter à l'opérateur — clé ISBN cassée, ISBN rattaché au mauvais titre,
+ * quantité absente — et ce qui doit rester une simple mention : titre non lu,
+ * doublon fusionné, série dont les tomes partagent un libellé.
  */
 function makeDemoSession(): CartonSession {
   return {
@@ -599,17 +560,6 @@ function makeDemoSession(): CartonSession {
     lines: [
       demoLine("9782070368228", "COMTE DE MONTE CRISTO", "FOLIO", 1, 1, 0),
       demoLine("9782070612758", "ARSENE LUPIN, GENTLEMAN", "GALLIMARD JEUNE", 3, 3, 0),
-      // Titre divergent seul : mention, pas d'arrêt.
-      demoLine("9782021400984", "FIGURES DU FOU", "GALLIMARD", 5, 5, 0, [
-        {
-          id: crypto.randomUUID(),
-          field: "title",
-          kind: "conflict",
-          severity: "info",
-          candidateA: "FIGURES DU FOU",
-          candidateB: "FIGURE DU FOU",
-        },
-      ]),
       // Clé de contrôle volontairement fausse : le bon chiffre est 7.
       demoLine("9782070782010", "COFFRET LE PETIT NICOLAS", "GALLIMARD JEUNE", 2, 2, 1, [
         {
@@ -621,34 +571,15 @@ function makeDemoSession(): CartonSession {
           candidateB: "",
         },
       ]),
-      // Quantité livrée lue 2 d'un côté, 4 de l'autre : à trancher.
-      demoLine("9782213242583", "MES MUSIQUES DU MONDE", "GALLIMARD JEUNE", 4, 2, 1, [
-        {
-          id: crypto.randomUUID(),
-          field: "quantityDelivered",
-          kind: "conflict",
-          severity: "blocking",
-          candidateA: "2",
-          candidateB: "4",
-        },
-      ]),
-      // ISBN divergent tranché tout seul : la lecture 9782072678450 était fausse.
+      // Le même ISBN lu sur deux pages, quantités fusionnées : simple mention.
       demoLine("9782072678455", "PROTOCOLES MAPAR 2025", "MAPAR", 1, 1, 1, [
         {
           id: crypto.randomUUID(),
-          field: "isbn",
-          kind: "autoFixed",
+          field: "quantityDelivered",
+          kind: "merged",
           severity: "info",
-          candidateA: "9782072678450",
-          candidateB: "9782072678455",
-        },
-        {
-          id: crypto.randomUUID(),
-          field: "isbn",
-          kind: "singleSource",
-          severity: "info",
-          candidateA: "— absente de la 1ʳᵉ lecture —",
-          candidateB: "9782072678455",
+          candidateA: "1",
+          candidateB: "2 lignes pour un même ISBN",
         },
       ]),
       // Deux tomes d'une série édités sous le même libellé : à vérifier, pas à
@@ -665,7 +596,7 @@ function makeDemoSession(): CartonSession {
           },
         ]),
       ),
-      // Même ISBN des deux côtés, deux titres sans rapport : décalage de bloc.
+      // Un ISBN retrouvé sur deux titres sans rapport : décalage de bloc.
       demoLine("9782070179268", "BERSERK T43 COLLECTOR", "GLENAT", 6, 6, 1, [
         {
           id: crypto.randomUUID(),

@@ -28,12 +28,13 @@ export function backorder(line: OrderLine): number {
 }
 
 /**
- * Ce qui arrête l'opérateur : une lecture douteuse de l'ISBN ou d'une quantité.
+ * Ce qui arrête l'opérateur : un ISBN qui ne tient pas debout, une quantité
+ * absente.
  *
- * Le reste — titre ou éditeur lus différemment par les deux moteurs, ligne non
- * recoupée dont la clé ISBN tombe juste — reste affiché sur la ligne, mais ne
- * fait plus partie de la file d'attente. Une file qui contient tout ne se
- * distingue pas d'une file vide : on finit par tout valider sans regarder.
+ * Le reste — titre non lu, doublon fusionné, série dont les tomes partagent un
+ * libellé — reste affiché sur la ligne, mais ne fait pas partie de la file
+ * d'attente. Une file qui contient tout ne se distingue pas d'une file vide :
+ * on finit par tout valider sans regarder.
  */
 export function needsReview(line: OrderLine): boolean {
   return line.issues.some(isBlocking);
@@ -46,13 +47,6 @@ export function infoIssues(line: OrderLine): FieldIssue[] {
 
 export function blockingIssues(line: OrderLine): FieldIssue[] {
   return line.issues.filter(isBlocking);
-}
-
-/** Lignes dont un ISBN divergent a été tranché par la clé de contrôle. */
-export function autoFixedLines(session: CartonSession): OrderLine[] {
-  return session.lines.filter((line) =>
-    line.issues.some((entry) => entry.kind === "autoFixed"),
-  );
 }
 
 /**

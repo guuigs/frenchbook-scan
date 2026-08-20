@@ -4,15 +4,15 @@ import { useEffect, useId, useState } from "react";
 
 import { isValidIsbn, normalizeIsbn } from "@/lib/isbn";
 import { loadPage } from "@/lib/pages";
-import type { FieldIssue, LineField, OrderLine } from "@/lib/types";
+import type { OrderLine } from "@/lib/types";
 import { Button, Input, Note, Sheet } from "./ui";
 import { IconClose, IconMinus, IconPlus } from "./icons";
 
 /**
  * Arbitrage d'une ligne douteuse.
  *
- * La photo de la page est au-dessus du formulaire : trancher entre deux
- * lectures sans pouvoir consulter l'original ne serait qu'un tirage au sort.
+ * La photo de la page est au-dessus du formulaire : corriger une lecture sans
+ * pouvoir consulter l'original ne serait qu'un tirage au sort.
  */
 export function LineEditor({
   line,
@@ -44,42 +44,13 @@ export function LineEditor({
     };
   }, [line.pageIndex]);
 
-  /** Les trois genres de signalement qui portent deux lectures comparables. */
-  const divergence = (field: LineField): FieldIssue | undefined =>
-    line.issues.find(
-      (issue) =>
-        issue.field === field &&
-        (issue.kind === "conflict" || issue.kind === "alignment" || issue.kind === "autoFixed"),
-    );
-
   const alignment = line.issues.find((issue) => issue.kind === "alignment");
   const duplicateTitle = line.issues.find((issue) => issue.kind === "duplicateTitle");
-  const autoFixed = line.issues.find((issue) => issue.kind === "autoFixed");
 
   const isbnValid = isValidIsbn(isbn);
   // Tout ISBN doit repartir avec un titre : c'est ce que l'opérateur lira au
   // scan pour reconnaître le livre qu'il a en main.
   const canSave = isbnValid && title.trim().length > 0 && (ordered > 0 || delivered > 0);
-
-  const candidates = (field: LineField, apply: (value: string) => void) => {
-    const issue = divergence(field);
-    if (!issue) return null;
-    return (
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {[issue.candidateA, issue.candidateB].map((value, index) => (
-          <button
-            key={index}
-            type="button"
-            onClick={() => apply(value)}
-            className="rounded-[8px] border border-border bg-panel px-2.5 py-2 text-left hover:border-border-strong active:bg-subtle"
-          >
-            <span className="block font-mono text-[10px] text-faint">Lecture {index + 1}</span>
-            <span className="block text-[13px] break-words">{value || "(vide)"}</span>
-          </button>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <>
@@ -115,9 +86,10 @@ export function LineEditor({
         <div className="space-y-4">
           {alignment ? (
             <Note tone="danger">
-              Cet ISBN a été lu sur deux libellés différents. Sur ces bordereaux, chaque article
-              tient sur un bloc de deux lignes : vérifiez sur la photo que le code appartient bien
-              au titre affiché, et non à celui du bloc voisin.
+              Cet ISBN a été lu sur deux libellés différents ({alignment.candidateA} /{" "}
+              {alignment.candidateB}). Sur ces bordereaux, chaque article tient sur un bloc de deux
+              lignes : vérifiez sur la photo que le code appartient bien au titre affiché, et non à
+              celui du bloc voisin.
             </Note>
           ) : null}
 
@@ -126,13 +98,6 @@ export function LineEditor({
               Ce titre porte {duplicateTitle.candidateB.split(" / ").length} ISBN différents (
               {duplicateTitle.candidateB}). C’est le cas normal d’une série ou d’un livre édité en
               plusieurs façonnages : vérifiez sur la photo que celui-ci va bien avec ce titre.
-            </Note>
-          ) : null}
-
-          {autoFixed ? (
-            <Note tone="neutral">
-              Lectures divergentes ({autoFixed.candidateA || "vide"} / {autoFixed.candidateB ||
-                "vide"}) : celle dont la clé de contrôle tombe juste a été retenue.
             </Note>
           ) : null}
 
@@ -182,7 +147,6 @@ export function LineEditor({
                 réf. bordereau {line.reference}
               </p>
             ) : null}
-            {candidates("isbn", (value) => setIsbn(normalizeIsbn(value)))}
           </div>
 
           <div>
@@ -195,7 +159,6 @@ export function LineEditor({
               onChange={(event) => setTitle(event.target.value)}
               autoComplete="off"
             />
-            {candidates("title", setTitle)}
           </div>
 
           <div>
@@ -208,19 +171,16 @@ export function LineEditor({
               onChange={(event) => setPublisher(event.target.value)}
               autoComplete="off"
             />
-            {candidates("publisher", setPublisher)}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="mb-1.5 text-[13px] text-muted">Commandé</p>
               <Stepper label="commandée" value={ordered} onChange={setOrdered} />
-              {candidates("quantityOrdered", (v) => setOrdered(Number(v.replace(/\D/g, "")) || 0))}
             </div>
             <div>
               <p className="mb-1.5 text-[13px] text-muted">Livré</p>
               <Stepper label="livrée" value={delivered} onChange={setDelivered} />
-              {candidates("quantityDelivered", (v) => setDelivered(Number(v.replace(/\D/g, "")) || 0))}
             </div>
           </div>
         </div>

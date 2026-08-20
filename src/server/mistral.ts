@@ -1,15 +1,16 @@
 import "server-only";
 
-import { EXTRACTION_INSTRUCTION, EXTRACTION_SCHEMA } from "@/lib/extraction-schema";
+import { EXTRACTION_SCHEMA } from "@/lib/extraction-schema";
 import type { ExtractedLine, ExtractedNotDelivered, ExtractedPage } from "@/lib/types";
 
 /**
  * Accès à l'API Mistral. Ce module ne tourne que côté serveur : la clé vit
  * dans une variable d'environnement Vercel et n'atteint jamais le navigateur.
  *
- * Deux moteurs indépendants sont exposés — l'endpoint OCR documentaire et un
- * modèle vision — avec le même schéma JSON strict, pour que leurs sorties
- * soient directement comparables champ à champ.
+ * Un seul moteur : l'endpoint OCR documentaire, à qui le schéma JSON strict
+ * impose la forme de la réponse. Un modèle vision a longtemps fourni une
+ * seconde lecture à confronter ; l'OCR s'étant montré fiable sur ces
+ * bordereaux, le second appel ne payait plus son temps d'attente.
  */
 
 const BASE_URL = "https://api.mistral.ai/v1";
@@ -34,10 +35,6 @@ function apiKey(): string {
 
 function ocrModel(): string {
   return process.env.MISTRAL_OCR_MODEL?.trim() || "mistral-ocr-latest";
-}
-
-function visionModel(): string {
-  return process.env.MISTRAL_VISION_MODEL?.trim() || "mistral-medium-latest";
 }
 
 const jsonSchema = {
@@ -148,7 +145,7 @@ function parseLooseJson(text: string): unknown {
   }
 }
 
-// MARK: - Moteur A — endpoint OCR documentaire
+// MARK: - Lecture d'une page
 
 export async function extractWithOcrEngine(dataUrl: string): Promise<ExtractedPage> {
   const result = (await post("ocr", {
@@ -170,44 +167,4 @@ export async function extractWithOcrEngine(dataUrl: string): Promise<ExtractedPa
   }
 
   throw new MistralError("Annotation absente de la réponse OCR.");
-}
-
-// MARK: - Moteur B — modèle vision + sortie structurée
-
-export async function extractWithVisionEngine(dataUrl: string): Promise<ExtractedPage> {
-  const result = (await post("chat/completions", {
-    model: visionModel(),
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: EXTRACTION_INSTRUCTION },
-          { type: "image_url", image_url: dataUrl },
-        ],
-      },
-    ],
-    response_format: jsonSchema,
-  })) as Record<string, unknown>;
-
-  const choices = result.choices as Array<Record<string, unknown>> | undefined;
-  const message = choices?.[0]?.message as Record<string, unknown> | undefined;
-  if (!message) {
-    throw new MistralError("Réponse vision inattendue : aucun message.");
-  }
-
-  let content = "";
-  if (typeof message.content === "string") {
-    content = message.content;
-  } else if (Array.isArray(message.content)) {
-    content = (message.content as Array<Record<string, unknown>>)
-      .map((part) => asString(part.text))
-      .join("");
-  }
-
-  if (!content.trim()) {
-    throw new MistralError("Réponse vision vide.");
-  }
-
-  return toExtractedPage(parseLooseJson(content));
 }

@@ -10,28 +10,26 @@ import type {
 import { isValidIsbn, normalizeIsbn } from "./isbn";
 
 /**
- * Croise les lectures des deux moteurs OCR pour produire des lignes fiables.
+ * Transforme la lecture OCR d'un bon en lignes de travail, et contrôle ce qui
+ * peut l'être sans avoir le papier sous les yeux.
  *
- * Deux principes, dans cet ordre :
+ * La lecture vient d'un seul moteur — l'endpoint OCR documentaire de Mistral.
+ * Il n'y a donc plus de second avis à confronter : les contrôles qui restent
+ * sont ceux qui se démontrent, et eux seuls arrêtent l'opérateur.
  *
- * 1. Ce que la machine peut trancher seule, elle le tranche. Quand les deux
- *    moteurs lisent deux ISBN différents et qu'un seul porte une clé de
- *    contrôle valide, il n'y a rien à arbitrer : l'autre est faux, point. Faire
- *    valider ça par un humain, c'est lui demander de recalculer une clé de tête.
+ * 1. La clé de contrôle EAN-13. Un ISBN dont la clé ne tombe pas juste porte au
+ *    moins un chiffre faux : c'est une certitude arithmétique, pas une opinion.
  *
- * 2. Ce qui reste ne remonte que si ça change le comptage. L'ISBN identifie le
- *    livre au scan, les quantités disent combien doivent sortir du carton :
- *    seules ces colonnes arrêtent l'opérateur. Un titre ou un éditeur lus
- *    différemment sont affichés, corrigeables, et n'interrompent rien.
+ * 2. La cohérence entre colonnes, une fois les pages réunies. Un même ISBN sur
+ *    deux titres sans rapport, un titre sur deux ISBN : rien dans la lecture
+ *    d'une ligne prise isolément ne peut le révéler, et le premier cas ferait
+ *    compter un livre sur la ligne d'un autre.
  */
-
-/** Seuil de similarité des titres pour apparier deux lignes sans ISBN commun. */
-const TITLE_MATCH_THRESHOLD = 0.8;
 
 /**
  * En dessous de ce seuil, deux titres ne sont plus la même lecture abîmée du
- * même libellé : ce sont deux livres différents. Sur un ISBN pourtant lu à
- * l'identique par les deux moteurs, cela signe un rattachement au mauvais bloc.
+ * même libellé : ce sont deux livres différents. Sur un ISBN pourtant identique,
+ * cela signe un rattachement au mauvais bloc.
  */
 const ALIGNMENT_THRESHOLD = 0.45;
 
@@ -51,9 +49,9 @@ export function isBlocking(entry: FieldIssue): boolean {
 
 /**
  * Une colonne « Commandé » distincte n'existe pas sur tous les bordereaux ;
- * quand elle manque, un moteur recopie la quantité livrée et l'autre laisse 0.
- * Sans cette normalisation, chaque ligne d'un tel bon remonterait comme une
- * divergence de quantité — un signalement systématique, donc inutile.
+ * quand elle manque, la lecture ramène une seule quantité et laisse l'autre à
+ * zéro. Sans cette normalisation, la ligne partirait avec un attendu nul et le
+ * livre serait déclaré en trop dès le premier scan.
  */
 function normalizeQuantities(extracted: ExtractedLine): ExtractedLine {
   const ordered = Math.max(extracted.quantityOrdered, 0);
@@ -82,7 +80,7 @@ function makeLine(extracted: ExtractedLine, pageIndex: number): OrderLine {
   };
 }
 
-/** Contrôles qui ne dépendent pas de la comparaison entre moteurs. */
+/** Ce qu'une ligne prise isolément permet de contrôler. */
 function checksumIssues(line: OrderLine): FieldIssue[] {
   const issues: FieldIssue[] = [];
 
@@ -95,8 +93,7 @@ function checksumIssues(line: OrderLine): FieldIssue[] {
   /*
    * Un titre absent est signalé en rouge partout où la ligne s'affiche, mais
    * n'arrête pas : il ne fausse ni l'identification au scan, qui passe par
-   * l'ISBN, ni le comptage. Il ne relève d'aucune des trois familles qui
-   * justifient d'interrompre une réception.
+   * l'ISBN, ni le comptage.
    */
   if (!line.title) {
     issues.push(issue("title", "missing", "info", "", ""));
@@ -111,8 +108,8 @@ function checksumIssues(line: OrderLine): FieldIssue[] {
 
 /**
  * Comparaison indulgente sur la casse, les accents, la ponctuation et les
- * espaces multiples : « Éditions » contre « Editions » n'est pas une divergence
- * de lecture qui mérite l'attention de l'opérateur.
+ * espaces multiples : « Éditions » contre « Editions » désigne le même éditeur,
+ * et deux titres ne doivent pas passer pour différents à cause d'une virgule.
  */
 export function normalizeText(value: string): string {
   return value
@@ -143,306 +140,27 @@ export function similarity(left: string, right: string): number {
   return 1 - previous[right.length] / Math.max(left.length, right.length);
 }
 
-// MARK: - Arbitrage de l'ISBN
-
-interface IsbnVerdict {
-  isbn: string;
-  issues: FieldIssue[];
-}
-
 /**
- * Tranche entre deux lectures d'ISBN.
+ * Une page lue, telle qu'elle sort du moteur, en lignes de travail.
  *
- * La clé de contrôle EAN-13 rend une erreur de chiffre détectable sans avoir le
- * livre en main : quand une seule des deux lectures la vérifie, l'autre est
- * fausse et il n'y a personne à déranger. On ne remonte à l'opérateur que les
- * cas réellement indécidables — deux codes valides mais différents, ou aucun
- * des deux valide.
+ * Aucun jugement ici : ce que l'OCR a lu est repris tel quel. Les seuls
+ * signalements posés sont ceux que la ligne porte en elle — une clé de contrôle
+ * fausse, un champ obligatoire vide.
  */
-export function arbitrateIsbn(rawA: string, rawB: string): IsbnVerdict {
-  const a = normalizeIsbn(rawA);
-  const b = normalizeIsbn(rawB);
-
-  if (a === b) return { isbn: a, issues: [] };
-
-  const validA = Boolean(a) && isValidIsbn(a);
-  const validB = Boolean(b) && isValidIsbn(b);
-
-  // Une seule lecture valide : elle gagne, et on garde une trace informative de
-  // ce qui a été écarté pour que l'opérateur puisse la retrouver au besoin.
-  if (validA && !validB) {
-    return { isbn: a, issues: [issue("isbn", "autoFixed", "info", a, b)] };
-  }
-  if (validB && !validA) {
-    return { isbn: b, issues: [issue("isbn", "autoFixed", "info", a, b)] };
-  }
-
-  // Une seule lecture tout court : rien à arbitrer, les contrôles de clé
-  // prendront le relais.
-  if (!a || !b) {
-    return { isbn: a || b, issues: [] };
-  }
-
-  // Deux codes valides et différents, ou deux codes faux : indécidable.
-  return { isbn: a, issues: [issue("isbn", "conflict", "blocking", a, b)] };
-}
-
-// MARK: - Appariement des deux lectures
-
-/** Comparaison des références internes : « 19 9119 0 » et « 1991190 » sont la même. */
-export function normalizeReference(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
-function hasDistinctReferences(lines: ExtractedLine[]): boolean {
-  const references = lines.map((line) => normalizeReference(line.reference)).filter(Boolean);
-  return references.length > 0 && new Set(references).size === references.length;
-}
-
-interface Pairing {
-  a: number;
-  b: number;
-  /**
-   * Clé qui a servi à l'appariement. Quand c'est un code — référence interne ou
-   * ISBN — les deux moteurs désignent le même bloc du bordereau, et leurs titres
-   * sont alors censés se ressembler.
-   */
-  anchor: "reference" | "isbn" | "title";
-}
-
-/**
- * Apparie les lignes des deux moteurs.
- *
- * Les codes d'abord — référence interne, puis ISBN — parce qu'ils ne dépendent
- * pas d'une lecture de texte. La référence passe en premier : elle est imprimée
- * sur la ligne du titre, donc elle identifie le bloc même quand un moteur s'est
- * trompé d'ISBN, ce qui est précisément le cas qu'on cherche à voir.
- *
- * Les restes sont appariés par titre, mais globalement — du meilleur score au
- * moins bon — et non ligne à ligne dans l'ordre du document : un appariement
- * glouton laissait la première ligne rafler le titre d'une autre et faisait
- * remonter deux fausses lignes « vues par un seul moteur ».
- */
-function pairLines(
-  linesA: ExtractedLine[],
-  linesB: ExtractedLine[],
-): { pairs: Pairing[]; onlyA: number[]; onlyB: number[] } {
-  const takenA = new Set<number>();
-  const takenB = new Set<number>();
-  const pairs: Pairing[] = [];
-
-  const pairByCode = (
-    anchor: "reference" | "isbn",
-    key: (line: ExtractedLine) => string,
-  ) => {
-    linesA.forEach((lineA, indexA) => {
-      if (takenA.has(indexA)) return;
-      const value = key(lineA);
-      if (!value) return;
-      const indexB = linesB.findIndex(
-        (lineB, index) => !takenB.has(index) && key(lineB) === value,
-      );
-      if (indexB < 0) return;
-      takenA.add(indexA);
-      takenB.add(indexB);
-      pairs.push({ a: indexA, b: indexB, anchor });
-    });
-  };
-
-  /*
-   * La référence n'est une ancre que si elle distingue réellement les lignes.
-   * Un moteur qui recopie le numéro de bordereau sur chaque article produirait
-   * sinon un appariement purement positionnel, qui masquerait le décalage même
-   * qu'on cherche à voir.
-   */
-  if (hasDistinctReferences(linesA) && hasDistinctReferences(linesB)) {
-    pairByCode("reference", (line) => normalizeReference(line.reference));
-  }
-  pairByCode("isbn", (line) => normalizeIsbn(line.isbn));
-
-  const candidates: Array<{ a: number; b: number; score: number }> = [];
-  linesA.forEach((lineA, indexA) => {
-    if (takenA.has(indexA)) return;
-    linesB.forEach((lineB, indexB) => {
-      if (takenB.has(indexB)) return;
-      const score = similarity(normalizeText(lineA.title), normalizeText(lineB.title));
-      if (score > TITLE_MATCH_THRESHOLD) candidates.push({ a: indexA, b: indexB, score });
-    });
+export function toOrderLines(page: ExtractedPage, pageIndex: number): OrderLine[] {
+  return page.lines.map((extracted) => {
+    const line = makeLine(extracted, pageIndex);
+    line.issues = checksumIssues(line);
+    return line;
   });
-  candidates.sort((left, right) => right.score - left.score);
-
-  for (const candidate of candidates) {
-    if (takenA.has(candidate.a) || takenB.has(candidate.b)) continue;
-    takenA.add(candidate.a);
-    takenB.add(candidate.b);
-    pairs.push({ a: candidate.a, b: candidate.b, anchor: "title" });
-  }
-
-  pairs.sort((left, right) => left.a - right.a);
-
-  return {
-    pairs,
-    onlyA: linesA.map((_, index) => index).filter((index) => !takenA.has(index)),
-    onlyB: linesB.map((_, index) => index).filter((index) => !takenB.has(index)),
-  };
-}
-
-// MARK: - Fusion de deux lectures appariées
-
-function merge(
-  a: ExtractedLine,
-  b: ExtractedLine,
-  anchor: Pairing["anchor"],
-  pageIndex: number,
-): OrderLine {
-  const line = makeLine(a, pageIndex);
-  const issues: FieldIssue[] = [];
-
-  const verdict = arbitrateIsbn(a.isbn, b.isbn);
-  line.isbn = verdict.isbn;
-  issues.push(...verdict.issues);
-
-  line.reference = a.reference.trim() || b.reference.trim();
-
-  const titleScore = similarity(normalizeText(a.title), normalizeText(b.title));
-
-  /*
-   * Les deux moteurs désignent le même bloc du bordereau — même référence ou
-   * même ISBN — mais lui donnent deux titres qui n'ont rien à voir : ce n'est
-   * pas un titre mal lu, c'est un code rattaché au mauvais libellé. Ces
-   * bordereaux impriment chaque article sur un bloc de deux lignes, et un
-   * moteur qui glisse d'un cran associe l'ISBN au livre du dessus ou du
-   * dessous. L'erreur est invisible au scan — le code existe bien dans le bon,
-   * le livre est simplement décompté sur la mauvaise ligne — donc elle bloque.
-   */
-  if (
-    anchor !== "title" &&
-    a.title.trim() &&
-    b.title.trim() &&
-    titleScore < ALIGNMENT_THRESHOLD
-  ) {
-    issues.push(issue("title", "alignment", "blocking", a.title, b.title));
-  } else if (normalizeText(a.title) !== normalizeText(b.title)) {
-    issues.push(issue("title", "conflict", "info", a.title, b.title));
-  }
-
-  if (normalizeText(a.publisher) !== normalizeText(b.publisher)) {
-    issues.push(issue("publisher", "conflict", "info", a.publisher, b.publisher));
-  }
-
-  const quantitiesA = normalizeQuantities(a);
-  const quantitiesB = normalizeQuantities(b);
-
-  if (quantitiesA.quantityOrdered !== quantitiesB.quantityOrdered) {
-    issues.push(
-      issue(
-        "quantityOrdered",
-        "conflict",
-        "blocking",
-        String(quantitiesA.quantityOrdered),
-        String(quantitiesB.quantityOrdered),
-      ),
-    );
-  }
-  if (quantitiesA.quantityDelivered !== quantitiesB.quantityDelivered) {
-    issues.push(
-      issue(
-        "quantityDelivered",
-        "conflict",
-        "blocking",
-        String(quantitiesA.quantityDelivered),
-        String(quantitiesB.quantityDelivered),
-      ),
-    );
-  }
-
-  line.issues = [...issues, ...checksumIssues(line)];
-  return line;
-}
-
-function singleSourceLine(
-  extracted: ExtractedLine,
-  seenBy: "A" | "B",
-  pageIndex: number,
-  degraded: boolean,
-): OrderLine {
-  const line = makeLine(extracted, pageIndex);
-  const note = degraded
-    ? "— lecture unique —"
-    : seenBy === "A"
-      ? "— absente de la 2ᵉ lecture —"
-      : "— absente de la 1ʳᵉ lecture —";
-
-  /*
-   * Ligne non recoupée : la clé de contrôle vouche encore pour l'ISBN, mais
-   * rien ne vouche pour la quantité. La suite dépend de la raison.
-   *
-   * Un seul moteur a répondu pour toute la page : la lecture croisée n'a jamais
-   * eu lieu, et bloquer reviendrait à rouvrir chaque ligne du bon — autant le
-   * ressaisir à la main. On marque sans arrêter.
-   *
-   * Les deux moteurs ont répondu et un seul a vu cette ligne : c'est un oubli
-   * franc de l'autre, sur une page qu'il a par ailleurs lue. Sa quantité n'a
-   * alors aucun contradicteur, et c'est exactement le genre d'écart qui se
-   * termine en manque non détecté. Celle-là arrête.
-   */
-  line.issues = [
-    issue(
-      "isbn",
-      "singleSource",
-      degraded ? "info" : "blocking",
-      seenBy === "A" ? extracted.isbn : note,
-      seenBy === "B" ? extracted.isbn : note,
-    ),
-    ...checksumIssues(line),
-  ];
-  return line;
-}
-
-export function reconcile(
-  engineA: ExtractedPage,
-  engineB: ExtractedPage | null,
-  pageIndex: number,
-): OrderLine[] {
-  if (!engineB) {
-    return engineA.lines.map((extracted) =>
-      singleSourceLine(extracted, "A", pageIndex, true),
-    );
-  }
-
-  const { pairs, onlyA, onlyB } = pairLines(engineA.lines, engineB.lines);
-  const result: Array<{ order: number; line: OrderLine }> = [];
-
-  for (const pair of pairs) {
-    result.push({
-      order: pair.a,
-      line: merge(engineA.lines[pair.a], engineB.lines[pair.b], pair.anchor, pageIndex),
-    });
-  }
-
-  for (const index of onlyA) {
-    result.push({ order: index, line: singleSourceLine(engineA.lines[index], "A", pageIndex, false) });
-  }
-
-  // Lignes vues uniquement par le second moteur : le premier en a sauté une.
-  // Elles sont replacées en fin de page, faute de position connue dans A.
-  for (const index of onlyB) {
-    result.push({
-      order: engineA.lines.length + index,
-      line: singleSourceLine(engineB.lines[index], "B", pageIndex, false),
-    });
-  }
-
-  return result.sort((left, right) => left.order - right.order).map((entry) => entry.line);
 }
 
 /**
- * Rassemble les articles annoncés non livrés, vus par l'un ou l'autre moteur.
+ * Rassemble les articles annoncés non livrés, toutes pages confondues.
  *
- * On prend l'union et non l'intersection : rater un « non servi » ferait
- * chercher à l'opérateur un livre absent du carton, alors qu'un doublon
- * n'entraîne qu'une ligne de trop au récapitulatif. Le déséquilibre des
- * conséquences dicte le choix.
+ * Le dédoublonnage est indulgent — ISBN à défaut de titre : une même section
+ * « NON-SERVI » répétée en pied de chaque page ne doit pas produire autant de
+ * lignes que de photos.
  */
 export function mergeNotDelivered(entries: ExtractedNotDelivered[]): NotDeliveredItem[] {
   const result: NotDeliveredItem[] = [];
@@ -481,15 +199,13 @@ export function mergeNotDelivered(entries: ExtractedNotDelivered[]): NotDelivere
  * Réunit les pages d'un même bon en une seule liste, un ISBN par ligne.
  *
  * Un même ISBN vu deux fois n'est pas une commande de deux lots : c'est le même
- * bloc du bordereau lu deux fois — une page photographiée en double, ou un
- * moteur qui a pris la seconde ligne d'un libellé pour un article à part. On
- * garde donc **la plus grande** quantité des deux, jamais leur somme :
- * additionner ferait chercher à l'opérateur un exemplaire qui n'existe pas, et
- * le carton finirait en manque imaginaire.
+ * bloc du bordereau lu deux fois — une page photographiée en double, ou la
+ * seconde ligne d'un libellé prise pour un article à part. On garde donc **la
+ * plus grande** quantité des deux, jamais leur somme : additionner ferait
+ * chercher à l'opérateur un exemplaire qui n'existe pas, et le carton finirait
+ * en manque imaginaire.
  *
- * La fusion ne demande rien à personne. Elle laisse une mention sur la ligne, et
- * le total imprimé en pied de bordereau reste là pour détecter le cas rare où
- * l'ISBN figurait réellement deux fois.
+ * La fusion ne demande rien à personne : elle laisse une mention sur la ligne.
  */
 export function consolidate(pages: OrderLine[][]): OrderLine[] {
   const result: OrderLine[] = [];
@@ -558,9 +274,9 @@ export function consolidate(pages: OrderLine[][]): OrderLine[] {
  *
  * Ils ne regardent pas comment un champ a été lu mais comment les colonnes se
  * répondent : chaque ISBN doit avoir son titre, et chaque titre son seul ISBN.
- * Un titre qui se retrouve sur deux ISBN est la trace d'un bloc décalé — le
- * libellé a été recopié deux fois pendant qu'un autre perdait le sien. Rien
- * dans la lecture d'une ligne prise isolément ne peut le révéler.
+ * Un titre qui se retrouve sur deux ISBN est le plus souvent une série, parfois
+ * la trace d'un bloc décalé : il se vérifie, il n'arrête pas. Rien dans la
+ * lecture d'une ligne prise isolément ne peut le révéler.
  */
 export function auditStructure(lines: OrderLine[]): OrderLine[] {
   const byTitle = new Map<string, OrderLine[]>();

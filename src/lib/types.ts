@@ -15,10 +15,6 @@ export const FIELD_LABELS: Record<LineField, string> = {
 
 /** Raison pour laquelle une ligne mérite d'être signalée. */
 export type IssueKind =
-  /** Les deux moteurs OCR ne lisent pas la même chose. */
-  | "conflict"
-  /** Un seul des deux moteurs a vu cette ligne. */
-  | "singleSource"
   /** La clé de contrôle de l'ISBN est fausse : au moins un chiffre est mal lu. */
   | "invalidChecksum"
   /** Le même ISBN apparaissait plusieurs fois, les quantités ont été fusionnées. */
@@ -26,24 +22,19 @@ export type IssueKind =
   /** Champ vide alors qu'il est obligatoire. */
   | "missing"
   /**
-   * Un même ISBN se retrouve sur deux titres sans rapport : le signe qu'un
-   * moteur a rattaché le code au libellé du bloc voisin.
+   * Un même ISBN se retrouve sur deux titres sans rapport : le signe que le
+   * code a été rattaché au libellé du bloc voisin.
    */
   | "alignment"
   /** Le même titre est porté par deux ISBN différents. */
-  | "duplicateTitle"
-  /** Divergence tranchée sans intervention, la clé de contrôle ayant départagé. */
-  | "autoFixed";
+  | "duplicateTitle";
 
 export const ISSUE_LABELS: Record<IssueKind, string> = {
-  conflict: "Lecture divergente",
-  singleSource: "Vu par un seul moteur",
   invalidChecksum: "Clé ISBN invalide",
   merged: "Doublon fusionné",
   missing: "Champ vide",
   alignment: "ISBN sur 2 titres",
   duplicateTitle: "Titre sur 2 ISBN",
-  autoFixed: "Corrigé par la clé",
 };
 
 /**
@@ -51,15 +42,13 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
  *
  * Seules les colonnes qui décident du comptage — l'ISBN, qui identifie le livre
  * au scan, et les quantités, qui disent combien doivent sortir du carton —
- * arrêtent l'opérateur. Un titre ou un éditeur lus différemment par les deux
- * moteurs sont affichés et corrigeables, mais ne valent pas la peine
- * d'interrompre une réception : ils ne changent rien à ce qu'il y a à compter.
+ * arrêtent l'opérateur. Un titre ou un éditeur douteux s'affichent et se
+ * corrigent, mais ne valent pas la peine d'interrompre une réception : ils ne
+ * changent rien à ce qu'il y a à compter.
  *
- * L'exception tient à l'appariement plutôt qu'à l'orthographe : un titre absent,
- * un titre porté par deux ISBN, un ISBN posé sur deux titres sans rapport ne
- * sont pas des divergences de lecture mais des liens cassés entre les deux
- * colonnes. Ceux-là arrêtent, parce qu'ils feraient compter un livre sur la
- * ligne d'un autre — une erreur qu'aucun scan ne rattrape ensuite.
+ * L'exception tient au lien entre colonnes plutôt qu'à l'orthographe : un ISBN
+ * posé sur deux titres sans rapport ferait compter un livre sur la ligne d'un
+ * autre — une erreur qu'aucun scan ne rattrape ensuite.
  */
 export type IssueSeverity = "blocking" | "info";
 
@@ -68,9 +57,9 @@ export interface FieldIssue {
   field: LineField;
   kind: IssueKind;
   severity: IssueSeverity;
-  /** Valeur proposée par le moteur OCR documentaire. */
+  /** Valeur lue, en cause dans le signalement. */
   candidateA: string;
-  /** Valeur proposée par le moteur vision. */
+  /** Ce à quoi elle s'oppose : l'autre titre, la liste des ISBN, un motif. */
   candidateB: string;
 }
 
@@ -81,8 +70,7 @@ export interface OrderLine {
    * Référence interne du distributeur, imprimée sur la ligne du titre (« 19 9119
    * 0 »). Elle n'identifie pas le livre — deux distributeurs numérotent
    * différemment — mais elle est le seul repère qui reste sur le papier quand
-   * l'ISBN est mal lu : elle sert à retrouver la ligne sur le bordereau, et à
-   * apparier les deux lectures d'un même bloc.
+   * l'ISBN est mal lu : elle sert à retrouver la ligne sur le bordereau.
    */
   reference: string;
   isbn: string;
@@ -140,8 +128,7 @@ export interface CartonSession {
    * n'en est qu'un — la somme de ses lignes est donc légitimement inférieure au
    * total imprimé, et l'écart se déclenchait sur des lectures parfaitement
    * justes. Une alarme qui se trompe souvent apprend à ignorer toutes les
-   * alarmes, y compris la clé ISBN et la divergence entre moteurs, qui elles
-   * sont fiables.
+   * alarmes, y compris la clé ISBN, qui elle est fiable.
    *
    * Le découpage d'un article sur deux lignes, que l'écart de références
    * servait aussi à détecter, est couvert par les signalements `alignment` et
@@ -151,7 +138,7 @@ export interface CartonSession {
   declaredTotalArticles: number;
 }
 
-/** Ligne brute renvoyée par un moteur d'extraction, avant rapprochement. */
+/** Ligne brute renvoyée par le moteur d'extraction, avant contrôle. */
 export interface ExtractedLine {
   reference: string;
   isbn: string;
@@ -180,10 +167,7 @@ export interface ExtractedPage {
 
 /** Réponse de la route serveur pour une page. */
 export interface OcrPageResponse {
-  engineA: ExtractedPage;
-  engineB: ExtractedPage | null;
-  /** Vrai si un seul moteur a répondu : la vérification croisée est perdue. */
-  degraded: boolean;
+  page: ExtractedPage;
 }
 
 export function emptySession(): CartonSession {

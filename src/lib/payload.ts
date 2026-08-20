@@ -79,14 +79,11 @@ export function toExtractedPage(raw: unknown): ExtractedPage {
 }
 
 const ISSUE_KINDS: IssueKind[] = [
-  "conflict",
-  "singleSource",
   "invalidChecksum",
   "merged",
   "missing",
   "alignment",
   "duplicateTitle",
-  "autoFixed",
 ];
 
 const LINE_FIELDS: LineField[] = [
@@ -105,12 +102,12 @@ const LINE_FIELDS: LineField[] = [
 const BLOCKING_FIELDS: LineField[] = ["isbn", "quantityOrdered", "quantityDelivered"];
 
 /**
- * Trois familles seulement justifient d'arrêter l'opérateur : un ISBN faux ou
- * absent, deux ISBN valides en concurrence sur un même titre, une quantité
- * incohérente. Tout le reste s'affiche sans interrompre.
+ * Deux familles seulement justifient d'arrêter l'opérateur : un ISBN faux,
+ * absent ou posé sur deux titres sans rapport, et une quantité manquante. Tout
+ * le reste s'affiche sans interrompre.
  */
 function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
-  if (kind === "autoFixed" || kind === "merged" || kind === "singleSource") return "info";
+  if (kind === "merged") return "info";
   // Un même titre sur plusieurs ISBN est le cas normal d'une série ou de
   // variantes : cela se vérifie, cela n'arrête pas.
   if (kind === "duplicateTitle") return "info";
@@ -119,14 +116,22 @@ function inferSeverity(field: LineField, kind: IssueKind): IssueSeverity {
   return BLOCKING_FIELDS.includes(field) ? "blocking" : "info";
 }
 
-function toFieldIssue(raw: unknown): FieldIssue {
+/**
+ * Un signalement relu du cache, ou rien.
+ *
+ * Les genres qui comparaient deux lectures — divergence, source unique, ISBN
+ * tranché par la clé — n'ont plus de sens depuis que le bon n'est lu qu'une
+ * fois : on les laisse tomber au lieu de les traduire en autre chose. La ligne
+ * garde ses contrôles propres, qui eux se démontrent encore. C'est aussi ce
+ * qu'elle aurait porté si elle avait été lue par la version courante.
+ */
+function toFieldIssue(raw: unknown): FieldIssue | null {
   const record = (raw ?? {}) as Record<string, unknown>;
   const field = LINE_FIELDS.includes(record.field as LineField)
     ? (record.field as LineField)
     : "isbn";
-  const kind = ISSUE_KINDS.includes(record.kind as IssueKind)
-    ? (record.kind as IssueKind)
-    : "conflict";
+  if (!ISSUE_KINDS.includes(record.kind as IssueKind)) return null;
+  const kind = record.kind as IssueKind;
   const severity =
     record.severity === "blocking" || record.severity === "info"
       ? (record.severity as IssueSeverity)
@@ -163,7 +168,9 @@ export function migrateSession(raw: unknown): CartonSession {
       quantityOrdered: asCount(line.quantityOrdered),
       quantityDelivered: asCount(line.quantityDelivered),
       pageIndex: asCount(line.pageIndex),
-      issues: (Array.isArray(line.issues) ? line.issues : []).map(toFieldIssue),
+      issues: (Array.isArray(line.issues) ? line.issues : [])
+        .map(toFieldIssue)
+        .filter((entry): entry is FieldIssue => entry !== null),
       counted: asCount(line.counted),
       damaged: asCount(line.damaged),
     } satisfies OrderLine;

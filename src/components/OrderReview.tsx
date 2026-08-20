@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
 import {
-  autoFixedLines,
   blockingIssues,
   displayPublisher,
   expected,
@@ -17,7 +16,7 @@ import {
   variantIssue,
 } from "@/lib/order";
 import { ISSUE_LABELS, type OrderLine } from "@/lib/types";
-import { ActionBar, Button, Dialog, Label, Note, Tag } from "./ui";
+import { ActionBar, Button, Dialog, Label, Tag } from "./ui";
 import { IconAlert, IconCheck, IconChevronRight, IconPlus } from "./icons";
 import { LineEditor } from "./LineEditor";
 
@@ -25,12 +24,11 @@ import { LineEditor } from "./LineEditor";
  * Contrôle du bon de commande lu.
  *
  * Les lignes à vérifier remontent en tête : l'opérateur descend jusqu'à ce que
- * le compteur tombe à zéro, sans relire ce que les deux moteurs ont lu à
- * l'identique.
+ * le compteur tombe à zéro, sans relire ligne à ligne ce que la lecture a rendu
+ * sans accroc.
  */
 export function OrderReview() {
   const session = useCarton((state) => state.session);
-  const degraded = useCarton((state) => state.degraded);
   const resolveLine = useCarton((state) => state.resolveLine);
   const deleteLine = useCarton((state) => state.deleteLine);
   const addManualLine = useCarton((state) => state.addManualLine);
@@ -57,7 +55,6 @@ export function OrderReview() {
   const variants = useMemo(() => variantGroups(session), [session]);
 
   const clean = isReviewComplete(session);
-  const autoFixed = autoFixedLines(session);
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -81,16 +78,6 @@ export function OrderReview() {
       </header>
 
       <div className="flex-1 space-y-4 px-4 pb-6">
-        {degraded ? <Note tone="neutral">Un seul moteur a répondu sur certaines pages.</Note> : null}
-
-        {autoFixed.length > 0 ? (
-          <Note tone="neutral">
-            {autoFixed.length === 1
-              ? "1 ISBN divergent tranché par sa clé de contrôle."
-              : `${autoFixed.length} ISBN divergents tranchés par leur clé de contrôle.`}
-          </Note>
-        ) : null}
-
         {session.notDelivered.length > 0 ? (
           <section>
             <Label>Annoncés non livrés · {session.notDelivered.length}</Label>
