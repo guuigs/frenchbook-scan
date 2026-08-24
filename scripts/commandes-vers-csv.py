@@ -23,8 +23,9 @@ ENTETE = ['Code', 'P.O', 'Titre', 'Auteur', 'Editeur', 'cdé', 'rsvé', 'Répons
           'Date expédition', 'Unité TTC', 'Remise', 'Remise %', 'Valeur TTC', 'Poids (kg)']
 
 # Les colonnes de `catalog.order_lines`, dans l'ordre où le CSV les portera.
-COLONNES = ['order_reference', 'isbn', 'title', 'author', 'publisher', 'supplier_response',
-            'shipping_date', 'reserved', 'unit_price', 'quantity_ordered', 'quantity_pending']
+COLONNES = ['order_reference', 'customer', 'isbn', 'title', 'author', 'publisher',
+            'supplier_response', 'shipping_date', 'reserved', 'unit_price',
+            'quantity_ordered', 'quantity_pending']
 
 
 def texte(valeur):
@@ -57,8 +58,22 @@ def date(valeur):
     return f"{jour.group(3)}-{jour.group(2)}-{jour.group(1)}" if jour else None
 
 
-def lire(chemin):
+def charger_correspondance(chemin):
+    """numero -> "numero - Réf. Comm. - Nom", le nom qu'affiche l'appli.
+
+    Le CSV de correspondance porte les colonnes numero,refcomm,nom (le numéro
+    de commande sans préfixe, tel qu'il figure dans le nom du fichier).
+    """
+    correspondance = {}
+    with open(chemin, newline="", encoding="utf-8") as fichier:
+        for ligne in csv.DictReader(fichier):
+            correspondance[ligne["numero"]] = f"{ligne['numero']} - {ligne['refcomm']} - {ligne['nom']}"
+    return correspondance
+
+
+def lire(chemin, correspondance):
     reference = os.path.basename(chemin).replace(".xlsx", "")
+    customer = correspondance.get(re.sub(r"[^0-9]", "", reference), "")
     feuille = openpyxl.load_workbook(chemin, data_only=True).worksheets[0]
     lignes = list(feuille.iter_rows(values_only=True))
 
@@ -87,6 +102,7 @@ def lire(chemin):
 
         resultat.append((
             reference,
+            customer,
             isbn,
             texte(champs["Titre"]),
             texte(champs["Auteur"]),
@@ -103,18 +119,19 @@ def lire(chemin):
     return resultat
 
 
-def main(dossier, sortie):
+def main(dossier, sortie, correspondance_csv):
+    correspondance = charger_correspondance(correspondance_csv) if correspondance_csv else {}
     total = 0
     with open(sortie, "w", newline="", encoding="utf-8") as fichier:
         ecrivain = csv.writer(fichier)
         ecrivain.writerow(COLONNES)
 
         for chemin in sorted(glob.glob(f"{dossier}/*.xlsx")):
-            lignes = lire(chemin)
-            for (ref, isbn, titre, auteur, editeur, reponse,
+            lignes = lire(chemin, correspondance)
+            for (ref, customer, isbn, titre, auteur, editeur, reponse,
                  expedition, reserve, montant, commande, reste) in lignes:
                 ecrivain.writerow([
-                    ref, isbn, titre, auteur, editeur, reponse,
+                    ref, customer, isbn, titre, auteur, editeur, reponse,
                     expedition or "",
                     "true" if reserve else "false",
                     "" if montant is None else f"{montant:.2f}",
@@ -127,6 +144,8 @@ def main(dossier, sortie):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage : commandes-vers-csv.py <dossier de .xlsx> <sortie.csv>")
-    main(sys.argv[1], sys.argv[2])
+    if len(sys.argv) not in (3, 4):
+        raise SystemExit(
+            "usage : commandes-vers-csv.py <dossier de .xlsx> <sortie.csv> [correspondance.csv]"
+        )
+    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else None)

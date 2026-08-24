@@ -46,11 +46,22 @@ pip install openpyxl
 python3 scripts/commandes-vers-csv.py ~/commandes ~/commandes.csv
 ```
 
+Un troisième argument optionnel donne le nom affiché par l'appli
+(`customer`) : un CSV `numero,refcomm,nom` (le numéro de commande sans
+préfixe, tel qu'il figure dans le nom du fichier) produit le nom
+`<numero> - <refcomm> - <nom>`. Sans ce fichier, `customer` reste vide et
+l'appli retombe sur `order_reference`.
+
+```bash
+python3 scripts/commandes-vers-csv.py ~/commandes ~/commandes.csv ~/correspondance.csv
+```
+
 Colonnes produites, qui sont exactement celles de la table :
 
 | Colonne | Source dans l'export | Remarque |
 |---|---|---|
 | `order_reference` | nom du fichier | `10852SP.xlsx` → `10852SP` |
+| `customer` | fichier de correspondance (optionnel) | `<numero> - <refcomm> - <nom>` |
 | `isbn` | `Code` | **13 chiffres**, vérifiés un à un |
 | `title` | `Titre` | recoupe le bon de livraison |
 | `author` | `Auteur` | |
