@@ -41,10 +41,16 @@ function fileStem(session: CartonSession): string {
   return `reception_${reference.replace(/[^A-Za-z0-9_-]/g, "-")}_${stamp}`;
 }
 
-/** Une ligne prête à entrer en stock : le code, et le nombre d'exemplaires sains. */
+/** Une ligne prête à entrer en stock : le code, le nombre d'exemplaires sains, et sa remise. */
 export interface ImportRow {
   isbn: string;
   quantity: number;
+  /**
+   * Remise fournisseur en points de pourcentage, reprise du référentiel de
+   * commandes. Vide quand le titre n'a été rattaché à aucune commande (les
+   * commandes journalières, notamment), ou que le référentiel ne la porte pas.
+   */
+  discountPercent: number | null;
 }
 
 /**
@@ -81,19 +87,48 @@ export function importRows(session: CartonSession): ImportRow[] {
     const quantity = line.counted - line.damaged;
     if (quantity <= 0) continue;
 
-    rows.push({ isbn, quantity });
+    rows.push({ isbn, quantity, discountPercent: discountForIsbn(session, isbn) });
   }
 
   return rows;
 }
 
 /**
- * Liste d'import Librisoft : le code ISBN, puis la quantité.
+ * Remise à reporter pour un ISBN, à partir des commandes auxquelles ses
+ * exemplaires ont été affectés.
  *
- * La liste mémorisée de Librisoft se charge depuis un fichier texte ou CSV
- * portant « le code ISBN des articles puis la quantité » — donc deux colonnes,
- * dans cet ordre, et rien de plus. Les choix de forme visent le lecteur le plus
- * strict possible :
+ * Un même titre peut se répartir entre plusieurs commandes portant des
+ * remises différentes ; la moyenne pondérée par la quantité de chacune reste
+ * la meilleure valeur unique à défaut de pouvoir en importer une par
+ * commande. `null` si aucune affectation ne porte de remise — les commandes
+ * journalières, notamment, n'en ont pas.
+ */
+function discountForIsbn(session: CartonSession, isbn: string): number | null {
+  const entries = session.allocations.filter(
+    (entry) => normalizeIsbn(entry.isbn) === isbn && entry.discountPercent !== null,
+  );
+  if (entries.length === 0) return null;
+
+  const weighted = entries.reduce((sum, entry) => sum + entry.discountPercent! * entry.quantity, 0);
+  const quantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+  return quantity > 0 ? Math.round((weighted / quantity) * 100) / 100 : null;
+}
+
+/**
+ * Liste d'import Librisoft : le code ISBN, la quantité, et la remise.
+ *
+ * La liste mémorisée de Librisoft se chargeait jusqu'ici depuis un fichier
+ * texte ou CSV à deux colonnes — « le code ISBN des articles puis la
+ * quantité » — et rien de plus ; c'est le seul format dont on avait la preuve
+ * qu'il était lu. Cette troisième colonne, la remise fournisseur, est une
+ * tentative : à vérifier à l'usage que Librisoft la lit bien plutôt que de
+ * rejeter la ligne entière ou de l'ignorer silencieusement.
+ *
+ * Une remise inconnue laisse la colonne vide plutôt que d'écrire un zéro, qui
+ * se lirait comme une remise nulle plutôt que comme une absence d'information.
+ *
+ * Les choix de forme visent le lecteur le plus strict possible, comme pour les
+ * deux colonnes d'origine :
  *
  * — pas de ligne d'en-tête : elle serait lue comme un article, et « ISBN » ne
  *   ressemble à aucun code ;
@@ -104,7 +139,9 @@ export function importRows(session: CartonSession): ImportRow[] {
  *   chiffre du premier ISBN.
  */
 export function buildCsv(session: CartonSession): Blob {
-  const rows = importRows(session).map((row) => `${row.isbn};${row.quantity}`);
+  const rows = importRows(session).map(
+    (row) => `${row.isbn};${row.quantity};${row.discountPercent !== null ? row.discountPercent.toFixed(2) : ""}`,
+  );
   const content = rows.length > 0 ? `${rows.join("\r\n")}\r\n` : "";
   return new Blob([content], { type: "text/csv;charset=utf-8" });
 }

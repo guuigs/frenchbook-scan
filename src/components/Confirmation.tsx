@@ -43,14 +43,18 @@ export function Confirmation({
         // rangé d'office dans les commandes journalières sur la foi d'une panne.
         error
         ? []
-        : [{ orderReference: DAILY_ORDERS, customer: "", quantity: 1 }]
+        : [{ orderReference: DAILY_ORDERS, customer: "", quantity: 1, discountPercent: null }]
       : Object.entries(proposeSplit(matches, 1))
           .filter(([, quantity]) => quantity > 0)
-          .map(([orderReference, quantity]) => ({
-            orderReference,
-            customer: matches.find((m) => m.orderReference === orderReference)?.customer ?? "",
-            quantity,
-          }));
+          .map(([orderReference, quantity]) => {
+            const match = matches.find((m) => m.orderReference === orderReference);
+            return {
+              orderReference,
+              customer: match?.customer ?? "",
+              quantity,
+              discountPercent: match?.discountPercent ?? null,
+            };
+          });
 
   const destination = matches[0];
 

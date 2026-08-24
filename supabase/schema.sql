@@ -71,6 +71,11 @@ create table if not exists catalog.order_lines (
   unit_price         numeric(10, 2) check (unit_price >= 0),
   currency           text        not null default 'EUR',
 
+  -- Remise fournisseur (« Remise % » de l'export), en points de pourcentage
+  -- (13.00 pour 13 %). Sert à préremplir la réception dans Librisoft sans
+  -- ressaisie manuelle ; nullable, comme unit_price, pour les mêmes raisons.
+  discount_percent   numeric(5, 2) check (discount_percent >= 0),
+
   quantity_ordered   integer     not null default 0 check (quantity_ordered   >= 0),
   quantity_delivered integer     not null default 0 check (quantity_delivered >= 0),
 
@@ -94,6 +99,11 @@ create table if not exists catalog.order_lines (
   -- (`on conflict … do update`) plutôt qu'en accumulant des doublons.
   constraint order_lines_unique_line unique (order_reference, isbn)
 );
+
+-- Ajout après coup sur une base déjà créée : `create table if not exists`
+-- n'ajoute aucune colonne à une table existante, il faut donc le faire à part.
+alter table catalog.order_lines
+  add column if not exists discount_percent numeric(5, 2) check (discount_percent >= 0);
 
 -- La seule recherche que fait l'application.
 create index if not exists order_lines_isbn_idx on catalog.order_lines (isbn);
@@ -140,6 +150,7 @@ returns table (
   shipping_date      date,
   reserved           boolean,
   unit_price         numeric,
+  discount_percent   numeric,
   currency           text,
   quantity_ordered   integer,
   quantity_delivered integer,
@@ -160,6 +171,7 @@ as $$
     l.shipping_date,
     l.reserved,
     l.unit_price,
+    l.discount_percent,
     l.currency,
     l.quantity_ordered,
     l.quantity_delivered,

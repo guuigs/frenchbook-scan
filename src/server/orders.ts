@@ -76,6 +76,7 @@ function toMatch(raw: unknown): OrderMatch {
     shippingDate: asText(record.shipping_date).slice(0, 10),
     reserved: record.reserved === true,
     unitPrice: asPrice(record.unit_price),
+    discountPercent: asPrice(record.discount_percent),
     currency: asText(record.currency) || "EUR",
     quantityOrdered: asCount(record.quantity_ordered),
     quantityDelivered: asCount(record.quantity_delivered),

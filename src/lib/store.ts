@@ -70,7 +70,12 @@ interface CartonState {
     id: string,
     counted: number,
     damaged: number,
-    allocations: ReadonlyArray<{ orderReference: string; customer: string; quantity: number }>,
+    allocations: ReadonlyArray<{
+      orderReference: string;
+      customer: string;
+      quantity: number;
+      discountPercent: number | null;
+    }>,
   ) => void;
   addDamaged: (id: string) => number;
   recordExtra: (isbn: string) => void;
@@ -424,6 +429,7 @@ export const useCarton = create<CartonState>()(
                     orderReference: entry.orderReference,
                     customer: entry.customer,
                     quantity: Math.max(Math.trunc(entry.quantity), 0),
+                    discountPercent: entry.discountPercent,
                   })),
               ],
             },

@@ -24,7 +24,8 @@ ENTETE = ['Code', 'P.O', 'Titre', 'Auteur', 'Editeur', 'cdé', 'rsvé', 'Répons
 
 # Les colonnes de `catalog.order_lines`, dans l'ordre où le CSV les portera.
 COLONNES = ['order_reference', 'customer', 'isbn', 'title', 'author', 'publisher', 'supplier_response',
-            'shipping_date', 'reserved', 'unit_price', 'quantity_ordered', 'quantity_pending']
+            'shipping_date', 'reserved', 'unit_price', 'discount_percent', 'quantity_ordered',
+            'quantity_pending']
 
 
 def texte(valeur):
@@ -44,6 +45,16 @@ def prix(valeur):
     except ValueError:
         return None
     return None if math.isnan(montant) or montant < 0 else round(montant, 2)
+
+
+def pourcentage(valeur):
+    """« "  13,00 %" » → 13.00. Vide si illisible, comme `prix`."""
+    brut = texte(valeur).replace("%", "").replace("\xa0", "").replace(" ", "").replace(",", ".")
+    try:
+        taux = float(brut)
+    except ValueError:
+        return None
+    return None if math.isnan(taux) or taux < 0 else round(taux, 2)
 
 
 def date(valeur):
@@ -114,6 +125,7 @@ def lire(chemin, clients):
             date(champs["Date expédition"]),
             reserve,
             prix(champs["Unité TTC"]),
+            pourcentage(champs["Remise %"]),
             commande,
             # Rien à pointer sur une ligne réservée : le reste est explicitement
             # nul, et c'est cette valeur que la base retient pour le calcul.
@@ -132,12 +144,13 @@ def main(dossier, sortie):
         for chemin in sorted(glob.glob(f"{dossier}/*.xlsx")):
             lignes = lire(chemin, clients)
             for (ref, client, isbn, titre, auteur, editeur, reponse,
-                 expedition, reserve, montant, commande, reste) in lignes:
+                 expedition, reserve, montant, remise, commande, reste) in lignes:
                 ecrivain.writerow([
                     ref, client, isbn, titre, auteur, editeur, reponse,
                     expedition or "",
                     "true" if reserve else "false",
                     "" if montant is None else f"{montant:.2f}",
+                    "" if remise is None else f"{remise:.2f}",
                     commande, reste,
                 ])
             total += len(lignes)

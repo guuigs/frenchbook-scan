@@ -60,6 +60,7 @@ Colonnes produites, qui sont exactement celles de la table :
 | `shipping_date` | `Date expédition` | converti en ISO |
 | `reserved` | `rsvé` | **1 → rien à pointer** |
 | `unit_price` | `Unité TTC` | « 24,00 € » → `24.00` |
+| `discount_percent` | `Remise %` | « 13,00 % » → `13.00` |
 | `quantity_ordered` | `cdé` | |
 | `quantity_pending` | déduit | `0` si réservé, la quantité commandée sinon |
 

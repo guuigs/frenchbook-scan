@@ -133,6 +133,8 @@ export interface OrderMatch {
    */
   reserved: boolean;
   unitPrice: number | null;
+  /** Remise fournisseur en points de pourcentage (13 pour 13 %). */
+  discountPercent: number | null;
   currency: string;
   quantityOrdered: number;
   quantityDelivered: number;
@@ -165,6 +167,8 @@ export interface Allocation {
   orderReference: string;
   customer: string;
   quantity: number;
+  /** Remise fournisseur reprise du référentiel, pour l'export de réception. */
+  discountPercent: number | null;
 }
 
 /** L'unité de travail : un carton, son bon de commande et son comptage. */

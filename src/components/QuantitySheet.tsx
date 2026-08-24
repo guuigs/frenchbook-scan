@@ -15,7 +15,12 @@ import { OrderPicker, proposeSplit, type Split } from "./OrderPicker";
 export interface ScanConfirmation {
   counted: number;
   damaged: number;
-  allocations: Array<{ orderReference: string; customer: string; quantity: number }>;
+  allocations: Array<{
+    orderReference: string;
+    customer: string;
+    quantity: number;
+    discountPercent: number | null;
+  }>;
 }
 
 /**
@@ -74,12 +79,13 @@ export function QuantitySheet({
       // sans rien demander — il n'y a pas de choix à faire.
       allocations:
         matches.length === 0 && !lookupError && count > 0
-          ? [{ orderReference: DAILY_ORDERS, customer: "", quantity: count }]
+          ? [{ orderReference: DAILY_ORDERS, customer: "", quantity: count, discountPercent: null }]
           : matches
               .map((match) => ({
                 orderReference: match.orderReference,
                 customer: match.customer,
                 quantity: split[match.orderReference] ?? 0,
+                discountPercent: match.discountPercent,
               }))
               .filter((entry) => entry.quantity > 0),
     });
