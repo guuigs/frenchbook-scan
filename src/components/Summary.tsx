@@ -11,6 +11,7 @@ import {
   backorderedLines,
   damagedLines,
   expected,
+  formatOrderReference,
   hasAnomalies,
   missingLines,
   shortfall,
@@ -21,6 +22,7 @@ import {
   totalExpected,
   totalExtras,
   totalMissing,
+  titleForIsbn,
   totalSurplus,
   unallocatedTotal,
 } from "@/lib/order";
@@ -175,36 +177,73 @@ export function Summary() {
         {tallies.length > 0 || loose > 0 ? (
           <section>
             <Label>Répartition par commande</Label>
-            <ul className="overflow-hidden rounded-[10px] border border-border">
+            {/*
+              Une commande, puis les titres qui lui reviennent. La version
+              précédente n'alignait que des totaux sous un « client non
+              renseigné » répété : elle disait combien, jamais quoi — et c'est
+              « quoi » que l'opérateur vérifie quand il répartit les piles.
+            */}
+            <div className="space-y-3">
               {tallies.map((tally) => (
-                <li
+                <div
                   key={tally.orderReference}
-                  className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0"
+                  className="overflow-hidden rounded-[10px] border border-border"
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px]">
-                      {tally.customer || "Client non renseigné"}
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border bg-subtle px-4 py-2.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-medium">
+                        {tally.customer || formatOrderReference(tally.orderReference)}
+                      </span>
+                      {tally.customer ? (
+                        <span className="mt-0.5 block font-mono text-[11px] text-faint" translate="no">
+                          {formatOrderReference(tally.orderReference)}
+                        </span>
+                      ) : null}
                     </span>
-                    <span className="mt-0.5 block font-mono text-[11px] text-faint" translate="no">
-                      {tally.orderReference}
+                    <span className="shrink-0 font-mono text-[13px] font-medium tabular-nums">
+                      ×{tally.quantity}
                     </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[14px] font-medium tabular-nums">
-                    ×{tally.quantity}
-                  </span>
-                </li>
+                  </div>
+
+                  <ul>
+                    {tally.lines.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="flex items-baseline gap-3 border-b border-border bg-panel px-4 py-2.5 last:border-0"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px]">
+                            {titleForIsbn(session, entry.isbn)}
+                          </span>
+                          <span
+                            className="mt-0.5 block font-mono text-[11px] text-faint tabular-nums"
+                            translate="no"
+                          >
+                            {formatIsbn(entry.isbn)}
+                          </span>
+                        </span>
+                        {entry.quantity > 1 ? (
+                          <span className="shrink-0 font-mono text-[13px] tabular-nums">
+                            ×{entry.quantity}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
+
               {loose > 0 ? (
-                <li className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0">
+                <div className="flex items-center gap-3 rounded-[10px] border border-border bg-panel px-4 py-3">
                   <span className="min-w-0 flex-1 text-[14px] text-muted">
                     Non affectés — en trop sur leur commande
                   </span>
                   <span className="shrink-0 font-mono text-[14px] font-medium tabular-nums">
                     ×{loose}
                   </span>
-                </li>
+                </div>
               ) : null}
-            </ul>
+            </div>
           </section>
         ) : null}
 

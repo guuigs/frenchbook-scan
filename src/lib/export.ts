@@ -3,6 +3,7 @@ import { formatIsbn, normalizeIsbn } from "./isbn";
 import {
   allocationsByOrder,
   backorder,
+  formatOrderReference,
   missingLines,
   shortfall,
   surplus,
@@ -11,6 +12,7 @@ import {
   totalDamaged,
   totalExpected,
   totalExtras,
+  titleForIsbn,
   unallocatedTotal,
   allocatedTotal,
 } from "./order";
@@ -209,16 +211,31 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
       newPageIfNeeded(16);
       const who = tally.customer ? ` — ${tally.customer}` : "";
       write(
-        `${tally.orderReference}${who} : ${tally.quantity} exemplaire${tally.quantity > 1 ? "s" : ""}`,
+        `${formatOrderReference(tally.orderReference)}${who} : ${tally.quantity} exemplaire${
+          tally.quantity > 1 ? "s" : ""
+        }`,
         9,
       );
+      // Le titre d'abord, l'ISBN sous lui : c'est le titre qui se reconnaît sur
+      // une pile, le code ne sert qu'à lever un doute.
       for (const entry of tally.lines) {
-        newPageIfNeeded(14);
+        newPageIfNeeded(24);
+        const titre = titleForIsbn(session, entry.isbn);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor("#000000");
+        doc.text(`    ${titre.length > 62 ? `${titre.slice(0, 61)}…` : titre}`, margin, y);
+        y += 11;
+
         doc.setFont("courier", "normal");
         doc.setFontSize(8);
         doc.setTextColor("#555555");
-        doc.text(`    ${formatIsbn(entry.isbn)}  ×${entry.quantity}`, margin, y);
-        y += 11;
+        doc.text(
+          `        ${formatIsbn(entry.isbn)}${entry.quantity > 1 ? `  ×${entry.quantity}` : ""}`,
+          margin,
+          y,
+        );
+        y += 12;
       }
     }
 

@@ -244,6 +244,33 @@ export function unallocatedTotal(session: CartonSession): number {
   return Math.max(totalCounted(session) - allocatedTotal(session), 0);
 }
 
+/**
+ * « 10857SP » → « N° 10857 ».
+ *
+ * Le suffixe de l'export ne distingue rien : les treize commandes le portent
+ * toutes. Ce qui identifie la commande, et ce que l'opérateur retrouvera sur le
+ * papier, c'est le numéro. Une référence d'une autre forme est laissée telle
+ * quelle plutôt que rabotée au hasard.
+ */
+export function formatOrderReference(reference: string): string {
+  const trimmed = reference.trim();
+  const numeric = /^(\d+)\s*SP$/i.exec(trimmed);
+  return numeric ? `N° ${numeric[1]}` : trimmed;
+}
+
+/**
+ * Le titre d'un ISBN compté, cherché d'abord au bon de livraison puis parmi les
+ * livres hors bon. Sans titre, l'ISBN reste le seul repère.
+ */
+export function titleForIsbn(session: CartonSession, isbn: string): string {
+  const key = normalizeIsbn(isbn);
+  const line = session.lines.find((entry) => normalizeIsbn(entry.isbn) === key);
+  if (line?.title) return line.title;
+  return session.extras.some((extra) => normalizeIsbn(extra.isbn) === key)
+    ? "Hors bon de commande"
+    : "Titre non lu";
+}
+
 export interface OrderTally {
   orderReference: string;
   customer: string;
