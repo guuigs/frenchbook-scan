@@ -209,9 +209,12 @@ La proposition suit le compteur tant que l'opérateur n'y a pas touché : passer
 de 1 à 2 exemplaires sert un second livre. Dès qu'il a réparti à la main, son
 choix ne bouge plus.
 
-**Un livre sans commande n'arrête rien.** Un réassort, un achat sur stock : la
-ligne l'annonce, le livre est compté, et le récapitulatif le range en entrée de
-stock plutôt que de le faire disparaître.
+**Un ISBN absent du référentiel n'est pas une anomalie.** Les commandes qui y
+figurent ne couvrent qu'une partie du catalogue ; le reste relève d'une autre
+catégorie de produits, servie par les commandes journalières. L'écran l'annonce
+en toutes lettres — « Pour commandes journalières » — et l'exemplaire est
+affecté à ce libellé, qui se regroupe au récapitulatif comme n'importe quelle
+commande. Le dire franchement évite de chercher une anomalie qui n'existe pas.
 
 **Le référentiel est consulté, jamais écrit.** Les affectations décidées au scan
 vivent dans le carton, sur l'appareil, et repartent au récapitulatif — par

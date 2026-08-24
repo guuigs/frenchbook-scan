@@ -3,7 +3,7 @@
 import { formatIsbn } from "@/lib/isbn";
 import type { OrderMatch } from "@/lib/types";
 import { Note } from "./ui";
-import { IconAlert, IconCheck, IconMinus, IconPlus } from "./icons";
+import { IconCheck, IconMinus, IconPlus } from "./icons";
 
 /** « 2026-08-21 » → « 21/08 ». L'année n'apprend rien sur un carton du jour. */
 function formatDate(iso: string): string {
@@ -99,16 +99,18 @@ export function OrderPicker({
     );
   }
 
+  /*
+   * Un ISBN absent du référentiel n'est pas une erreur de lecture : les
+   * commandes qui y figurent ne couvrent qu'une partie du catalogue, le reste
+   * relève des commandes journalières. Le dire franchement évite que
+   * l'opérateur cherche une anomalie qui n'existe pas.
+   */
   if (matches.length === 0) {
     return (
       <div className="rounded-[10px] border border-border px-4 py-3">
-        <p className="flex items-center gap-2 text-[14px]">
-          <IconAlert className="text-faint" />
-          Aucune commande pour ce titre
-        </p>
+        <p className="text-[14px] font-medium">Pour commandes journalières</p>
         <p className="mt-1.5 text-[12px] text-muted" translate="no">
-          {formatIsbn(isbn)} n’apparaît dans aucune commande du référentiel. Il sera compté comme
-          entrée de stock.
+          {formatIsbn(isbn)} ne figure dans aucune des commandes du référentiel.
         </p>
       </div>
     );
@@ -242,8 +244,8 @@ export function OrderPicker({
 
       {left > 0 && !single ? (
         <p className="px-1 pt-2 text-[12px] text-muted">
-          {left} exemplaire{left > 1 ? "s" : ""} sans commande : ils seront comptés comme entrée de
-          stock.
+          {left} exemplaire{left > 1 ? "s" : ""} de plus que ce que les commandes attendent : ils
+          seront comptés sans être affectés.
         </p>
       ) : null}
     </div>

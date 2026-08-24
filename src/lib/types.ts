@@ -141,6 +141,17 @@ export interface OrderMatch {
 }
 
 /**
+ * Destination des livres absents du référentiel de commandes.
+ *
+ * Un ISBN introuvable n'est pas une anomalie : c'est une autre catégorie de
+ * produits, servie par les commandes journalières. Le libellé tient lieu de
+ * référence pour que ces exemplaires se regroupent au récapitulatif comme
+ * n'importe quelle commande, au lieu de disparaître dans un total « non
+ * affecté » qui ne dit rien.
+ */
+export const DAILY_ORDERS = "Commandes journalières";
+
+/**
  * Un exemplaire physique du carton, affecté à une commande.
  *
  * L'affectation est décidée par l'opérateur au moment du scan et vit dans la

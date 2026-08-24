@@ -6,7 +6,7 @@ import { formatIsbn } from "@/lib/isbn";
 import { play } from "@/lib/feedback";
 import { displayPublisher, expected, isComplete } from "@/lib/order";
 import { lookupOrders } from "@/lib/orders";
-import type { OrderLine, OrderMatch } from "@/lib/types";
+import { DAILY_ORDERS, type OrderLine, type OrderMatch } from "@/lib/types";
 import { Button, NumberPad, Note, Sheet } from "./ui";
 import { IconAlert, IconMinus, IconPlus } from "./icons";
 import { OrderPicker, proposeSplit, type Split } from "./OrderPicker";
@@ -103,13 +103,18 @@ export function QuantitySheet({
     onConfirm({
       counted: count,
       damaged,
-      allocations: matches
-        .map((match) => ({
-          orderReference: match.orderReference,
-          customer: match.customer,
-          quantity: split[match.orderReference] ?? 0,
-        }))
-        .filter((entry) => entry.quantity > 0),
+      // Titre absent du référentiel : tout part aux commandes journalières,
+      // sans rien demander — il n'y a pas de choix à faire.
+      allocations:
+        matches.length === 0 && !lookupError && count > 0
+          ? [{ orderReference: DAILY_ORDERS, customer: "", quantity: count }]
+          : matches
+              .map((match) => ({
+                orderReference: match.orderReference,
+                customer: match.customer,
+                quantity: split[match.orderReference] ?? 0,
+              }))
+              .filter((entry) => entry.quantity > 0),
     });
   };
 

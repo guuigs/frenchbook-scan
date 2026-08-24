@@ -252,7 +252,7 @@ export function ScanScreen() {
                 ? allocations[0].customer || allocations[0].orderReference
                 : allocations.length > 1
                   ? `${allocations.length} commandes`
-                  : "sans commande",
+                  : "non affecté",
             );
           }}
           onCancel={() => {

@@ -197,7 +197,7 @@ export function Summary() {
               {loose > 0 ? (
                 <li className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0">
                   <span className="min-w-0 flex-1 text-[14px] text-muted">
-                    Sans commande — entrée de stock
+                    Non affectés — en trop sur leur commande
                   </span>
                   <span className="shrink-0 font-mono text-[14px] font-medium tabular-nums">
                     ×{loose}

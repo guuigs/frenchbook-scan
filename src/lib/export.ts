@@ -153,7 +153,7 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
     `Abîmés : ${totalDamaged(session)}`,
     `Hors bon de commande : ${totalExtras(session)}`,
     `Affectés à une commande : ${allocatedTotal(session)}`,
-    `Sans commande (stock) : ${unallocatedTotal(session)}`,
+    `Non affectés : ${unallocatedTotal(session)}`,
   ];
   for (const item of summary) {
     write(`• ${item}`, 10);
@@ -225,7 +225,7 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
     const loose = unallocatedTotal(session);
     if (loose > 0) {
       newPageIfNeeded(16);
-      write(`Sans commande : ${loose} exemplaire${loose > 1 ? "s" : ""} (entrée de stock)`, 9);
+      write(`Non affectés : ${loose} exemplaire${loose > 1 ? "s" : ""}`, 9);
     }
   }
 
