@@ -163,6 +163,15 @@ export function IconBox(props: IconProps) {
   );
 }
 
+export function IconFileSpreadsheet(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 1.5h5.5L12.5 4.5v10a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" />
+      <path d="M4.5 8h6M4.5 10.5h6M7.5 8v5" />
+    </Svg>
+  );
+}
+
 export function IconTrash(props: IconProps) {
   return (
     <Svg {...props}>

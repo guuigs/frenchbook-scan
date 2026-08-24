@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { useCarton } from "@/lib/store";
 import { makeThumbnail, prepareForUpload } from "@/lib/images";
 import { ActionBar, Button, IconButton, Note } from "./ui";
-import { IconBox, IconCamera, IconClose, IconImage, IconSettings } from "./icons";
+import { IconBox, IconCamera, IconChevronLeft, IconClose, IconImage, IconSettings } from "./icons";
 
 interface StagedPage {
   id: string;
@@ -13,7 +13,13 @@ interface StagedPage {
   thumbnail: string;
 }
 
-export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Home({
+  onOpenSettings,
+  onBack,
+}: {
+  onOpenSettings: () => void;
+  onBack?: () => void;
+}) {
   const processPages = useCarton((state) => state.processPages);
   const error = useCarton((state) => state.error);
   const setError = useCarton((state) => state.setError);
@@ -48,7 +54,14 @@ export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <main className="flex min-h-dvh flex-col">
       <header className="pt-safe flex items-center justify-between px-4 pb-4">
-        <h1 className="text-[22px] font-semibold">Réception</h1>
+        <span className="flex items-center gap-2">
+          {onBack ? (
+            <IconButton label="Retour" onClick={onBack}>
+              <IconChevronLeft />
+            </IconButton>
+          ) : null}
+          <h1 className="text-[22px] font-semibold">Réception</h1>
+        </span>
         <IconButton label="Réglages" onClick={onOpenSettings}>
           <IconSettings />
         </IconButton>

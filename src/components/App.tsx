@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useCarton } from "@/lib/store";
 import { setSoundEnabled } from "@/lib/feedback";
 import { Home } from "./Home";
+import { Landing } from "./Landing";
 import { LoginGate } from "./LoginGate";
 import { Processing } from "./Processing";
 
@@ -22,6 +23,9 @@ const OrderReview = dynamic(() => import("./OrderReview").then((m) => m.OrderRev
 const ScanScreen = dynamic(() => import("./ScanScreen").then((m) => m.ScanScreen), { ssr: false });
 const Summary = dynamic(() => import("./Summary").then((m) => m.Summary), { ssr: false });
 const Settings = dynamic(() => import("./Settings").then((m) => m.Settings), { ssr: false });
+// La lecture Excel (SheetJS) ne sert qu'à cet écran ponctuel : autant la
+// garder hors du bundle initial, comme jsPDF pour le récapitulatif.
+const ClientOrders = dynamic(() => import("./ClientOrders").then((m) => m.ClientOrders), { ssr: false });
 
 type Auth = "checking" | "anonymous" | "authorized";
 
@@ -36,9 +40,16 @@ export function App() {
   const [auth, setAuth] = useState<Auth>("checking");
   const [hydrated, setHydrated] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [view, setView] = useState<"landing" | "carton" | "clientOrders">("landing");
 
   const phase = useCarton((state) => state.phase);
   const soundEnabled = useCarton((state) => state.soundEnabled);
+
+  // Un carton clôturé ou purgé ramène `phase` à "idle" : l'écran d'accueil
+  // doit alors redevenir la sélection, pas rester coincé sur l'écran carton.
+  useEffect(() => {
+    if (phase === "idle") setView("landing");
+  }, [phase]);
 
   useEffect(() => {
     let active = true;
@@ -97,7 +108,19 @@ export function App() {
 
   return (
     <>
-      {phase === "idle" ? <Home onOpenSettings={() => setShowSettings(true)} /> : null}
+      {phase === "idle" && view === "landing" ? (
+        <Landing
+          onStartCarton={() => setView("carton")}
+          onClientOrders={() => setView("clientOrders")}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+      ) : null}
+      {phase === "idle" && view === "carton" ? (
+        <Home onOpenSettings={() => setShowSettings(true)} onBack={() => setView("landing")} />
+      ) : null}
+      {phase === "idle" && view === "clientOrders" ? (
+        <ClientOrders onBack={() => setView("landing")} />
+      ) : null}
       {phase === "processing" ? <Processing /> : null}
       {phase === "review" ? <OrderReview /> : null}
       {phase === "scanning" ? <ScanScreen /> : null}
