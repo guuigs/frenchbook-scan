@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
-import { buildExportFiles, shareOrDownload } from "@/lib/export";
+import { buildExportFiles, importRows, shareOrDownload } from "@/lib/export";
 import {
   backorder,
   backorderedLines,
@@ -37,6 +37,8 @@ export function Summary() {
   const [confirming, setConfirming] = useState(false);
 
   const conform = !hasAnomalies(session);
+  const toImport = importRows(session);
+  const copiesToImport = toImport.reduce((sum, row) => sum + row.quantity, 0);
 
   const runExport = async () => {
     setExporting(true);
@@ -165,6 +167,16 @@ export function Summary() {
             <IconShare />
             {exporting ? "Génération…" : exported ? "Exporter à nouveau" : "Exporter PDF + CSV"}
           </Button>
+          {/*
+            L'opérateur repart avec deux fichiers qui ne servent pas à la même
+            chose : autant le dire avant qu'il ne les ouvre.
+          */}
+          <p className="px-1 pt-2 text-[12px] text-muted">
+            PDF : le récapitulatif complet, écarts compris. CSV : la liste à importer dans
+            Librisoft — {toImport.length} titre{toImport.length > 1 ? "s" : ""},{" "}
+            {copiesToImport} exemplaire{copiesToImport > 1 ? "s" : ""}, sans les manquants ni les
+            abîmés.
+          </p>
           {exportError ? (
             <Note tone="danger" className="mt-2" aria-live="polite">
               {exportError}

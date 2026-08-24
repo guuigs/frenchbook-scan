@@ -1,8 +1,7 @@
 import type { CartonSession } from "./types";
-import { formatIsbn } from "./isbn";
+import { formatIsbn, normalizeIsbn } from "./isbn";
 import {
   backorder,
-  expected,
   missingLines,
   shortfall,
   surplus,
@@ -14,10 +13,17 @@ import {
 } from "./order";
 
 /**
- * Récapitulatif de réception, généré avant la purge du cache.
+ * Sorties de fin de carton, générées avant la purge du cache.
  *
- * Deux formats : un PDF lisible tel quel, à joindre à un litige fournisseur, et
- * un CSV réintégrable dans un tableur ou un ERP.
+ * Deux fichiers, deux usages qui n'ont rien à voir :
+ *
+ * — le PDF est la trace de la réception, à joindre à une réclamation
+ *   fournisseur. Il porte tout : manques, surplus, abîmés, non servis,
+ *   reliquats.
+ *
+ * — le CSV est une liste d'import pour Librisoft, et rien d'autre. Il ne porte
+ *   que ce qui est bon dans le carton. Un fichier d'import n'est pas un
+ *   rapport : la moindre ligne parasite entre en stock comme les autres.
  */
 
 function fileStem(session: CartonSession): string {
@@ -30,60 +36,72 @@ function fileStem(session: CartonSession): string {
   return `reception_${reference.replace(/[^A-Za-z0-9_-]/g, "-")}_${stamp}`;
 }
 
-function escapeCsv(value: string): string {
-  return value.replace(/;/g, ",").replace(/[\r\n]+/g, " ");
+/** Une ligne prête à entrer en stock : le code, et le nombre d'exemplaires sains. */
+export interface ImportRow {
+  isbn: string;
+  quantity: number;
 }
 
-export function buildCsv(session: CartonSession): Blob {
-  const rows = [
-    "ISBN;Titre;Editeur;Qte commandee;Qte livree;Qte comptee;Ecart;Abimes;Statut",
-  ];
+/**
+ * Ce qui est physiquement dans le carton et bon à valider.
+ *
+ * Le comptage moins les exemplaires signalés abîmés : ceux-là partent en
+ * réclamation, ils n'entrent pas en stock. Ce qui n'a jamais été scanné ne
+ * figure pas non plus — un manque n'est pas une entrée à zéro, c'est une
+ * absence, et Librisoft n'a rien à en faire.
+ *
+ * Les articles annoncés non livrés par le fournisseur sont hors sujet par
+ * construction : ils ne sont pas dans le carton.
+ *
+ * Restent deux cas de bord, tranchés dans le même sens — ce qui a été scanné
+ * est ce qui est là :
+ *
+ * — le surplus, un exemplaire de plus que le bon n'en annonce, entre en stock
+ *   avec les autres. Il est dans le carton, l'opérateur l'a eu en main. C'est
+ *   le litige fournisseur qui se règle au PDF, pas l'état du stock.
+ *
+ * — le livre hors bon, scanné sans figurer nulle part sur le bordereau,
+ *   n'entre PAS. Son ISBN n'a été confronté à aucune ligne écrite : le
+ *   rapprochement reste à faire, et un import est difficile à défaire.
+ */
+export function importRows(session: CartonSession): ImportRow[] {
+  const rows: ImportRow[] = [];
 
   for (const line of session.lines) {
-    const status = shortfall(line) > 0 ? "MANQUE" : surplus(line) > 0 ? "SURPLUS" : "CONFORME";
-    rows.push(
-      [
-        line.isbn,
-        escapeCsv(line.title),
-        escapeCsv(line.publisher),
-        line.quantityOrdered,
-        line.quantityDelivered,
-        line.counted,
-        line.counted - expected(line),
-        line.damaged,
-        status,
-      ].join(";"),
-    );
+    const isbn = normalizeIsbn(line.isbn);
+    // Un code mal formé ferait échouer la ligne à l'import, ou pire, entrerait
+    // sous une référence qui n'existe pas.
+    if (isbn.length !== 13) continue;
+
+    const quantity = line.counted - line.damaged;
+    if (quantity <= 0) continue;
+
+    rows.push({ isbn, quantity });
   }
 
-  for (const extra of session.extras) {
-    rows.push(
-      [extra.isbn, "Non commande", "", 0, 0, extra.counted, `+${extra.counted}`, extra.damaged, "HORS BON"].join(
-        ";",
-      ),
-    );
-  }
+  return rows;
+}
 
-  // Les articles annoncés non livrés ne sont pas des manques constatés : ils
-  // portent leur propre statut pour ne pas se mêler au comptage physique.
-  for (const item of session.notDelivered) {
-    rows.push(
-      [
-        item.isbn,
-        escapeCsv(item.title),
-        escapeCsv(item.publisher),
-        item.quantity,
-        0,
-        0,
-        0,
-        0,
-        `NON SERVI${item.reason ? ` (${escapeCsv(item.reason)})` : ""}`,
-      ].join(";"),
-    );
-  }
-
-  // BOM UTF-8 : sans lui, Excel en français casse les accents.
-  return new Blob(["﻿", rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
+/**
+ * Liste d'import Librisoft : le code ISBN, puis la quantité.
+ *
+ * La liste mémorisée de Librisoft se charge depuis un fichier texte ou CSV
+ * portant « le code ISBN des articles puis la quantité » — donc deux colonnes,
+ * dans cet ordre, et rien de plus. Les choix de forme visent le lecteur le plus
+ * strict possible :
+ *
+ * — pas de ligne d'en-tête : elle serait lue comme un article, et « ISBN » ne
+ *   ressemble à aucun code ;
+ * — point-virgule, séparateur des CSV en locale française ;
+ * — treize chiffres collés, sans tiret ni espace, tels qu'ils sont scannés ;
+ * — pas de BOM UTF-8, alors que le récapitulatif en a besoin : ici le fichier
+ *   n'a aucun accent, et l'octet invisible se retrouverait collé au premier
+ *   chiffre du premier ISBN.
+ */
+export function buildCsv(session: CartonSession): Blob {
+  const rows = importRows(session).map((row) => `${row.isbn};${row.quantity}`);
+  const content = rows.length > 0 ? `${rows.join("\r\n")}\r\n` : "";
+  return new Blob([content], { type: "text/csv;charset=utf-8" });
 }
 
 export async function buildPdf(session: CartonSession): Promise<Blob> {
@@ -232,7 +250,9 @@ export async function buildExportFiles(session: CartonSession): Promise<ExportFi
   const [pdfBlob, csvBlob] = [await buildPdf(session), buildCsv(session)];
   return {
     pdf: new File([pdfBlob], `${stem}.pdf`, { type: "application/pdf" }),
-    csv: new File([csvBlob], `${stem}.csv`, { type: "text/csv" }),
+    // Le suffixe évite l'hésitation devant la feuille de partage : les deux
+    // fichiers ne vont pas au même endroit.
+    csv: new File([csvBlob], `${stem}_librisoft.csv`, { type: "text/csv" }),
   };
 }
 
