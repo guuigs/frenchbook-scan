@@ -51,6 +51,7 @@ Colonnes produites, qui sont exactement celles de la table :
 | Colonne | Source dans l'export | Remarque |
 |---|---|---|
 | `order_reference` | nom du fichier | `10852SP.xlsx` → `10852SP` |
+| `customer` | `<dossier>/clients.csv` | facultatif, voir ci-dessous |
 | `isbn` | `Code` | **13 chiffres**, vérifiés un à un |
 | `title` | `Titre` | recoupe le bon de livraison |
 | `author` | `Auteur` | |
@@ -65,6 +66,24 @@ Colonnes produites, qui sont exactement celles de la table :
 Le convertisseur écarte les en-têtes répétés par la pagination, les lignes sans
 ISBN valide, et les doublons internes à une commande — que la contrainte
 d'unicité refuserait de toute façon.
+
+### Le nom du client
+
+L'export « special order » ne le porte dans aucune colonne : il vient de
+l'écran « Recherche des commandes Client » du logiciel de gestion, à part.
+Pour le reporter dans le CSV, déposer dans le même dossier que les `.xlsx`
+un fichier `clients.csv` à deux colonnes :
+
+```csv
+order_reference,customer
+10852SP,LIBRISTO MEDIA S.R.O.
+10866SP,GOBI/ EBSCO INTERNATIONAL INC. UK BRANCH UK700
+```
+
+`order_reference` doit être la référence telle qu'elle sort du nom de fichier
+(colonne de gauche du tableau ci-dessus). Une commande absente de `clients.csv`
+garde `customer` vide, comme avant. Sans le fichier du tout, le comportement
+est identique à l'ancienne version du script.
 
 Ne **pas** ajouter de colonne `quantity_remaining` : elle est calculée par la
 base. Deux colonnes qui se contredisent finiraient par diverger, et l'écran de

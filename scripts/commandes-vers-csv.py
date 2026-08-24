@@ -23,7 +23,7 @@ ENTETE = ['Code', 'P.O', 'Titre', 'Auteur', 'Editeur', 'cdé', 'rsvé', 'Répons
           'Date expédition', 'Unité TTC', 'Remise', 'Remise %', 'Valeur TTC', 'Poids (kg)']
 
 # Les colonnes de `catalog.order_lines`, dans l'ordre où le CSV les portera.
-COLONNES = ['order_reference', 'isbn', 'title', 'author', 'publisher', 'supplier_response',
+COLONNES = ['order_reference', 'customer', 'isbn', 'title', 'author', 'publisher', 'supplier_response',
             'shipping_date', 'reserved', 'unit_price', 'quantity_ordered', 'quantity_pending']
 
 
@@ -57,7 +57,25 @@ def date(valeur):
     return f"{jour.group(3)}-{jour.group(2)}-{jour.group(1)}" if jour else None
 
 
-def lire(chemin):
+def charger_clients(dossier):
+    """Lit <dossier>/clients.csv (order_reference,customer) si présent.
+
+    Ce fichier n'a pas de source dans l'export : le nom du client n'y figure
+    jamais. Il vient d'un écran séparé du logiciel de gestion (recherche des
+    commandes client), qu'il faut recopier à la main dans ce CSV avant la
+    conversion.
+    """
+    chemin = os.path.join(dossier, "clients.csv")
+    if not os.path.exists(chemin):
+        return {}
+    with open(chemin, newline="", encoding="utf-8") as fichier:
+        lignes = list(csv.reader(fichier))
+    if lignes and texte(lignes[0][0]).lower() == "order_reference":
+        lignes = lignes[1:]
+    return {texte(ref): texte(client) for ref, client in (l[:2] for l in lignes if len(l) >= 2)}
+
+
+def lire(chemin, clients):
     reference = os.path.basename(chemin).replace(".xlsx", "")
     feuille = openpyxl.load_workbook(chemin, data_only=True).worksheets[0]
     lignes = list(feuille.iter_rows(values_only=True))
@@ -87,6 +105,7 @@ def lire(chemin):
 
         resultat.append((
             reference,
+            clients.get(reference, ""),
             isbn,
             texte(champs["Titre"]),
             texte(champs["Auteur"]),
@@ -104,17 +123,18 @@ def lire(chemin):
 
 
 def main(dossier, sortie):
+    clients = charger_clients(dossier)
     total = 0
     with open(sortie, "w", newline="", encoding="utf-8") as fichier:
         ecrivain = csv.writer(fichier)
         ecrivain.writerow(COLONNES)
 
         for chemin in sorted(glob.glob(f"{dossier}/*.xlsx")):
-            lignes = lire(chemin)
-            for (ref, isbn, titre, auteur, editeur, reponse,
+            lignes = lire(chemin, clients)
+            for (ref, client, isbn, titre, auteur, editeur, reponse,
                  expedition, reserve, montant, commande, reste) in lignes:
                 ecrivain.writerow([
-                    ref, isbn, titre, auteur, editeur, reponse,
+                    ref, client, isbn, titre, auteur, editeur, reponse,
                     expedition or "",
                     "true" if reserve else "false",
                     "" if montant is None else f"{montant:.2f}",
