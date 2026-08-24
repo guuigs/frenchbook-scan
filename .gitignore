@@ -16,6 +16,8 @@ next-env.d.ts
 
 .vercel/
 
+.claude/worktrees/
+
 npm-debug.log*
 yarn-error.log*
 .DS_Store
