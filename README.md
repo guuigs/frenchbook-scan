@@ -17,7 +17,7 @@ elle produit un récapitulatif des écarts et efface tout.
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
 | 2. Lecture | Chaque page passe dans l'**endpoint OCR documentaire de Mistral**, côté serveur, sous un schéma JSON strict. |
 | 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
-| 4. Scan | Caméra en continu. Chaque livre ouvre un écran de validation : combien d'exemplaires, et pour quelle commande client. |
+| 4. Scan | Caméra en continu. Un exemplaire attendu → compte rendu vert avec la commande de destination, un bouton pour enchaîner. Plusieurs exemplaires, ou titre déjà complet → feuille de saisie. |
 | 5. Clôture | Manques, surplus, abîmés, hors commande. Récapitulatif PDF, liste d'import CSV — téléchargeable ou envoyée par mail — puis **purge totale**. |
 
 ## La fiabilité de lecture
@@ -193,10 +193,22 @@ livre est bien dans le carton ne dit donc pas encore où il doit partir.
 interroge un référentiel de commandes par ISBN et affiche ce qu'il en dit :
 quelles commandes attendent ce titre, pour quel client, en quelle quantité.
 
-**L'écran de validation s'ouvre désormais à chaque livre**, y compris ceux
-attendus en un seul exemplaire, qui étaient jusqu'ici validés d'office en un
-voile vert d'une seconde. C'est un ralentissement voulu : la question qu'il pose
-ne peut se répondre que le livre en main.
+**Chaque livre passe par un écran qui attend un geste**, mais pas le même écran
+selon ce qu'il y a à décider. C'est ce partage qui garde la cadence :
+
+- **un exemplaire attendu**, le cas de l'immense majorité des lignes : il n'y a
+  aucune quantité à trancher, donc aucune saisie à ouvrir. Un compte rendu vert
+  plein écran annonce le titre et la commande de destination, et un bouton
+  « Suivant » rend la main. La recherche en base prend quelques centaines de
+  millisecondes : l'écran s'affiche sans attendre, un anneau tourne à la place
+  de la commande, et le bouton — ancré en bas — ne bouge pas quand la réponse
+  arrive. Il est donc visable avant même de savoir.
+- **plusieurs exemplaires attendus, ou un titre déjà complet qui repasse** : là
+  il y a une quantité à vérifier, et la feuille de saisie s'ouvre avec son
+  compteur, sa répartition et ses exemplaires abîmés.
+
+Un livre reste toujours rattrapable après coup : le bouton « Signaler abîmé »
+de l'écran de scan porte sur le dernier titre compté.
 
 **Un même ISBN peut appartenir à plusieurs commandes**, et c'est le cas qui
 justifie tout le mécanisme. Deux libraires ont commandé le même titre :

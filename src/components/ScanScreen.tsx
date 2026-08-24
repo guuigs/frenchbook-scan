@@ -17,7 +17,8 @@ import {
 } from "@/lib/order";
 import type { OrderLine } from "@/lib/types";
 import { IconAlert, IconCheck, IconChevronRight, IconList } from "./icons";
-import { QuantitySheet } from "./QuantitySheet";
+import { Confirmation } from "./Confirmation";
+import { QuantitySheet, type ScanConfirmation } from "./QuantitySheet";
 import { UnknownCodeSheet } from "./UnknownCodeSheet";
 import { Checklist } from "./Checklist";
 
@@ -70,12 +71,18 @@ export function ScanScreen() {
   const flashTimer = useRef<number | null>(null);
 
   const [pendingLine, setPendingLine] = useState<OrderLine | null>(null);
+  /**
+   * Livre attendu en un seul exemplaire : il n'y a pas de quantité à trancher,
+   * donc pas de feuille à ouvrir. Le compte rendu suffit.
+   */
+  const [confirming, setConfirming] = useState<OrderLine | null>(null);
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [showChecklist, setShowChecklist] = useState(false);
   const [flash, setFlash] = useState<Flash | null>(null);
   const [lastScan, setLastScan] = useState<LastScan | null>(null);
 
-  const paused = pendingLine !== null || unknownCode !== null || showChecklist;
+  const paused =
+    pendingLine !== null || confirming !== null || unknownCode !== null || showChecklist;
 
   const showFlash = (tone: Flash["tone"], counter: string, title: string, subtitle: string) => {
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
@@ -86,12 +93,23 @@ export function ScanScreen() {
   const onCode = (code: string) => {
     const outcome = handleScan(code);
     switch (outcome.kind) {
-      case "found":
+      case "found": {
         // Deux sons distincts : un titre déjà complet qui repasse devant
         // l'objectif est le cas qui mérite qu'on lève les yeux.
         play(outcome.alreadyComplete ? "attention" : "success");
-        setPendingLine(outcome.line);
+        /*
+         * La feuille de saisie ne s'ouvre que s'il y a une quantité à vérifier :
+         * plusieurs exemplaires attendus, ou un titre déjà complet qui repasse.
+         * Le reste — l'immense majorité des lignes — n'a qu'un exemplaire
+         * attendu et se solde d'un compte rendu.
+         */
+        if (expected(outcome.line) === 1 && !outcome.alreadyComplete) {
+          setConfirming(outcome.line);
+        } else {
+          setPendingLine(outcome.line);
+        }
         break;
+      }
       case "unknown":
         play("failure");
         setUnknownCode(outcome.code);
@@ -113,6 +131,14 @@ export function ScanScreen() {
   const counted = totalCounted(session);
   const target = totalExpected(session);
   const remaining = session.lines.filter((line) => !isComplete(line)).length;
+
+  /** Enregistre un livre compté, quel que soit l'écran qui l'a validé. */
+  const record = (line: OrderLine, { counted, damaged, allocations }: ScanConfirmation) => {
+    confirmScan(line.id, counted, damaged, allocations);
+    setLastScan({ id: line.id, title: line.title });
+    suppress(line.isbn, RESUME_MS);
+    hold(SETTLE_MS);
+  };
 
   const markDamaged = () => {
     if (!lastScan) return;
@@ -229,30 +255,41 @@ export function ScanScreen() {
         </div>
       ) : null}
 
+      {confirming ? (
+        <Confirmation
+          line={confirming}
+          onNext={(confirmation) => {
+            record(confirming, confirmation);
+            setConfirming(null);
+          }}
+          // Plusieurs commandes pour un même titre : la répartition se fait à
+          // la main, dans la feuille complète.
+          onSplit={() => {
+            setPendingLine(confirming);
+            setConfirming(null);
+          }}
+        />
+      ) : null}
+
       {pendingLine ? (
         <QuantitySheet
           line={pendingLine}
           context="scan"
-          onConfirm={({ counted, damaged, allocations }) => {
-            confirmScan(pendingLine.id, counted, damaged, allocations);
-            setLastScan({ id: pendingLine.id, title: pendingLine.title });
+          onConfirm={(confirmation) => {
+            const line = pendingLine;
+            record(line, confirmation);
             setPendingLine(null);
-            suppress(pendingLine.isbn, RESUME_MS);
-            hold(SETTLE_MS);
             /*
              * Le voile confirme d'un coup d'œil ce qui vient d'être enregistré,
              * commande comprise : c'est la seule trace visible de l'affectation
-             * une fois la feuille refermée.
+             * une fois la feuille refermée. Le compte rendu du cas à un
+             * exemplaire, lui, se ferme sur un geste et n'a rien à rappeler.
              */
             showFlash(
-              counted === expected(pendingLine) ? "ok" : "alert",
-              `${counted}/${expected(pendingLine)}`,
-              pendingLine.title,
-              allocations.length === 1
-                ? allocations[0].customer || allocations[0].orderReference
-                : allocations.length > 1
-                  ? `${allocations.length} commandes`
-                  : "non affecté",
+              confirmation.counted === expected(line) ? "ok" : "alert",
+              `${confirmation.counted}/${expected(line)}`,
+              line.title,
+              describeAllocations(confirmation.allocations),
             );
           }}
           onCancel={() => {
@@ -286,6 +323,14 @@ export function ScanScreen() {
       {showChecklist ? <Checklist onClose={() => setShowChecklist(false)} /> : null}
     </main>
   );
+}
+
+function describeAllocations(
+  allocations: ScanConfirmation["allocations"],
+): string {
+  if (allocations.length === 0) return "non affecté";
+  if (allocations.length > 1) return `${allocations.length} commandes`;
+  return allocations[0].customer || allocations[0].orderReference;
 }
 
 /**

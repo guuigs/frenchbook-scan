@@ -2,7 +2,7 @@
 
 import { formatIsbn } from "@/lib/isbn";
 import type { OrderMatch } from "@/lib/types";
-import { Note } from "./ui";
+import { Note, Spinner } from "./ui";
 import { IconCheck, IconMinus, IconPlus } from "./icons";
 
 /** « 2026-08-21 » → « 21/08 ». L'année n'apprend rien sur un carton du jour. */
@@ -75,7 +75,10 @@ export function OrderPicker({
   if (loading) {
     return (
       <div className="rounded-[10px] border border-border px-4 py-3">
-        <p className="text-[13px] text-muted">Recherche de la commande…</p>
+        <p className="flex items-center gap-2.5 text-[13px] text-muted" aria-live="polite">
+          <Spinner />
+          Recherche de la commande…
+        </p>
       </div>
     );
   }

@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { formatIsbn } from "@/lib/isbn";
 import { play } from "@/lib/feedback";
 import { displayPublisher, expected, isComplete } from "@/lib/order";
-import { lookupOrders } from "@/lib/orders";
-import { DAILY_ORDERS, type OrderLine, type OrderMatch } from "@/lib/types";
+import { useOrderLookup } from "@/lib/useOrderLookup";
+import { DAILY_ORDERS, type OrderLine } from "@/lib/types";
 import { Button, NumberPad, Note, Sheet } from "./ui";
 import { IconAlert, IconMinus, IconPlus } from "./icons";
 import { OrderPicker, proposeSplit, type Split } from "./OrderPicker";
@@ -19,12 +19,12 @@ export interface ScanConfirmation {
 }
 
 /**
- * Validation d'un livre scanné.
+ * Validation d'un livre dont la quantité demande un arbitrage.
  *
- * Un exemplaire compté est désormais un exemplaire affecté : l'écran s'ouvre à
- * chaque livre, y compris ceux attendus en un seul exemplaire, et attend un
- * geste. C'est un ralentissement voulu — la seule question qu'il pose, à quelle
- * commande ce livre appartient, ne peut se répondre que le livre en main.
+ * Elle ne s'ouvre plus à chaque scan : un titre attendu en un seul exemplaire
+ * n'a pas de quantité à trancher, et se solde du compte rendu de `Confirmation`.
+ * Restent les deux cas qui posent une vraie question — plusieurs exemplaires
+ * attendus, ou un titre déjà complet qui repasse devant l'objectif.
  *
  * La quantité attendue et la répartition proposée sont pré-remplies : dans le
  * cas courant — un titre, une commande — il ne reste qu'à confirmer.
@@ -48,42 +48,9 @@ export function QuantitySheet({
   const [damaged, setDamaged] = useState(line.damaged);
   const [padOpen, setPadOpen] = useState(false);
 
-  const [matches, setMatches] = useState<OrderMatch[]>([]);
+  const { matches, loading, error: lookupError, retry } = useOrderLookup(line.isbn);
   const [split, setSplit] = useState<Split>({});
-  const [loading, setLoading] = useState(true);
-  const [lookupError, setLookupError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
-
-  const search = useCallback(() => {
-    let active = true;
-    setLoading(true);
-    setLookupError(null);
-
-    void lookupOrders(line.isbn)
-      .then((found) => {
-        if (!active) return;
-        setMatches(found);
-        setSplit(proposeSplit(found, count));
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setMatches([]);
-        setLookupError(error instanceof Error ? error.message : "Recherche impossible.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-    // La recherche ne dépend que du livre : la quantité initiale sert à la
-    // proposition de départ, la relancer à chaque incrément rappellerait le
-    // serveur pour rien.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line.isbn]);
-
-  useEffect(search, [search]);
 
   /*
    * La répartition suit la quantité tant que l'opérateur n'y a pas touché :
@@ -196,7 +163,7 @@ export function QuantitySheet({
             setTouched(true);
             setSplit(next);
           }}
-          onRetry={search}
+          onRetry={retry}
         />
 
         {/*

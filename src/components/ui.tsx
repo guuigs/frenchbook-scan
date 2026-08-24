@@ -104,6 +104,33 @@ export function Tag({ children, tone = "danger" }: { children: ReactNode; tone?:
   );
 }
 
+/**
+ * Anneau d'attente, pour les quelques centaines de millisecondes que prend la
+ * recherche en base.
+ *
+ * Un texte seul laisse croire à un écran figé ; l'anneau dit que quelque chose
+ * travaille. Il s'immobilise si le système demande moins d'animations — la
+ * consigne vaut aussi pour un entrepôt.
+ */
+export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={`motion-safe:animate-spin ${className}`}
+    >
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" opacity="0.25" />
+      <path
+        d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function Label({ children }: { children: ReactNode }) {
   return <p className="px-0.5 pb-2 text-[13px] font-medium text-muted">{children}</p>;
 }
