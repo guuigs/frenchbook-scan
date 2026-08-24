@@ -5,6 +5,12 @@ import type { OrderMatch } from "@/lib/types";
 import { Note } from "./ui";
 import { IconAlert, IconCheck, IconMinus, IconPlus } from "./icons";
 
+/** « 2026-08-21 » → « 21/08 ». L'année n'apprend rien sur un carton du jour. */
+function formatDate(iso: string): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return parts ? `${parts[3]}/${parts[2]}` : iso;
+}
+
 /** Ce que l'opérateur a réparti, commande par commande. */
 export type Split = Record<string, number>;
 
@@ -135,6 +141,14 @@ export function OrderPicker({
           const share = split[match.orderReference] ?? 0;
           const served = match.quantityRemaining === 0;
 
+          /*
+           * L'export ne porte pas toujours le nom du client. Plutôt qu'un
+           * « Client non renseigné » qui n'apprend rien, la référence de
+           * commande passe alors en tête : c'est elle que l'opérateur
+           * retrouvera sur le bordereau.
+           */
+          const titre = match.customer || match.orderReference;
+
           return (
             <li
               key={match.orderReference}
@@ -145,15 +159,19 @@ export function OrderPicker({
               </span>
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14px] font-medium">
-                  {match.customer || "Client non renseigné"}
-                </span>
+                <span className="block truncate text-[14px] font-medium">{titre}</span>
                 <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 font-mono text-[11px] tabular-nums">
-                  <span className="text-muted" translate="no">
-                    {match.orderReference}
-                  </span>
+                  {match.customer ? (
+                    <span className="text-muted" translate="no">
+                      {match.orderReference}
+                    </span>
+                  ) : null}
                   <span className={served ? "text-faint" : "text-foreground"}>
-                    {served ? "déjà servie" : `${match.quantityRemaining} à servir`}
+                    {match.reserved
+                      ? "réservé · rien à pointer"
+                      : served
+                        ? "rien à pointer"
+                        : `${match.quantityRemaining} à pointer`}
                   </span>
                   {match.unitPrice !== null ? (
                     <span className="text-faint">
@@ -161,6 +179,23 @@ export function OrderPicker({
                     </span>
                   ) : null}
                 </span>
+                {/*
+                  La réponse du fournisseur ne s'affiche que lorsqu'elle dit
+                  autre chose que « disponible » : un livre annoncé épuisé qui
+                  sort pourtant du carton mérite un coup d'œil.
+                */}
+                {match.supplierResponse && match.supplierResponse !== "Disponible" ? (
+                  <span className="mt-0.5 block truncate text-[11px] text-danger">
+                    {match.supplierResponse}
+                  </span>
+                ) : null}
+                {match.publisher || match.shippingDate ? (
+                  <span className="mt-0.5 block truncate text-[11px] text-faint">
+                    {[match.publisher, match.shippingDate ? `expédié le ${formatDate(match.shippingDate)}` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </span>
 
               {/*

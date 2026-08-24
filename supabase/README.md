@@ -33,30 +33,51 @@ dans une base Supabase, consultée en lecture seule pendant le scan.
 
 ## Importer les commandes
 
-Le tableur doit porter exactement ces colonnes, dans n'importe quel ordre :
+La source est l'export « special order » du logiciel de gestion : un fichier
+Excel par commande, nommé `<référence>SP.xlsx`. Le numéro de commande n'est
+dans aucune colonne — la colonne `P.O` de l'export est vide sur toutes les
+lignes — il vient donc du **nom du fichier**, qu'il ne faut pas renommer.
 
-| Colonne | Obligatoire | Remarque |
+`scripts/commandes-vers-csv.py` convertit un dossier de ces fichiers en un CSV
+prêt à importer :
+
+```bash
+pip install openpyxl
+python3 scripts/commandes-vers-csv.py ~/commandes ~/commandes.csv
+```
+
+Colonnes produites, qui sont exactement celles de la table :
+
+| Colonne | Source dans l'export | Remarque |
 |---|---|---|
-| `order_reference` | oui | Numéro de commande |
-| `isbn` | oui | **13 chiffres, sans tiret ni espace** — la base refuse le reste |
-| `customer` | non | Nom du client, affiché au scan |
-| `title` | non | Titre, pour recouper avec le bon de livraison |
-| `unit_price` | non | Point décimal, pas de symbole monétaire |
-| `currency` | non | `EUR` par défaut |
-| `quantity_ordered` | non | Quantité commandée |
-| `quantity_delivered` | non | Déjà livrée |
-| `quantity_pending` | non | Reste annoncé, s'il est donné explicitement |
+| `order_reference` | nom du fichier | `10852SP.xlsx` → `10852SP` |
+| `isbn` | `Code` | **13 chiffres**, vérifiés un à un |
+| `title` | `Titre` | recoupe le bon de livraison |
+| `author` | `Auteur` | |
+| `publisher` | `Editeur` | |
+| `supplier_response` | `Réponse` | « Disponible », « 21 - Epuisé »… |
+| `shipping_date` | `Date expédition` | converti en ISO |
+| `reserved` | `rsvé` | **1 → rien à pointer** |
+| `unit_price` | `Unité TTC` | « 24,00 € » → `24.00` |
+| `quantity_ordered` | `cdé` | |
+| `quantity_pending` | déduit | `0` si réservé, la quantité commandée sinon |
 
-Ne **pas** créer de colonne `quantity_remaining` : elle est calculée par la base
-(le reste annoncé s'il existe, sinon commandé moins livré). Deux colonnes qui se
-contredisent finiraient par diverger, et l'écran de scan lirait la mauvaise.
+Le convertisseur écarte les en-têtes répétés par la pagination, les lignes sans
+ISBN valide, et les doublons internes à une commande — que la contrainte
+d'unicité refuserait de toute façon.
+
+Ne **pas** ajouter de colonne `quantity_remaining` : elle est calculée par la
+base. Deux colonnes qui se contredisent finiraient par diverger, et l'écran de
+scan lirait la mauvaise.
 
 Import : Table Editor → sélectionner le schéma `catalog` dans le menu déroulant
 en haut → table `order_lines` → Insert → Import data from CSV.
 
-Une ligne par titre et par commande. Un même titre deux fois dans la même
-commande est refusé — c'est voulu, et c'est ce qui permet de réimporter le
-tableur sans accumuler de doublons.
+**La règle qui compte au scan :** `rsvé = 1` signifie que le livre est déjà là
+ou que le fournisseur ne le servira pas — il n'y a rien à pointer. Ces lignes ne
+sont pas cachées pour autant : l'écran les affiche en « réservé · rien à
+pointer », avec le motif du fournisseur quand il y en a un. Savoir qu'un livre
+annoncé épuisé sort pourtant du carton vaut mieux que de l'ignorer.
 
 ## Vérifier
 

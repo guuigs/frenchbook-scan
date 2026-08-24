@@ -117,13 +117,26 @@ export interface NotDeliveredItem {
  */
 export interface OrderMatch {
   orderReference: string;
+  /** Souvent vide : l'export de commandes ne porte pas toujours le client. */
   customer: string;
   title: string;
+  author: string;
+  publisher: string;
+  /** Réponse du fournisseur : « Disponible », « 21 - Epuisé »… */
+  supplierResponse: string;
+  /** Date d'expédition annoncée, au format ISO. Vide si la ligne est en attente. */
+  shippingDate: string;
+  /**
+   * Ligne déjà réglée : le livre est déjà là, ou le fournisseur ne le servira
+   * pas. Il n'y a rien à pointer dessus — mais le savoir vaut mieux que de
+   * l'ignorer, donc la ligne s'affiche quand même.
+   */
+  reserved: boolean;
   unitPrice: number | null;
   currency: string;
   quantityOrdered: number;
   quantityDelivered: number;
-  /** Ce qu'il reste à servir sur cette commande, d'après le référentiel. */
+  /** Ce qu'il reste à pointer sur cette commande, d'après le référentiel. */
   quantityRemaining: number;
 }
 

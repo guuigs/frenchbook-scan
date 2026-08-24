@@ -53,6 +53,19 @@ create table if not exists catalog.order_lines (
   isbn               text        not null check (isbn ~ '^[0-9]{13}$'),
 
   title              text        not null default '',
+  author             text        not null default '',
+  publisher          text        not null default '',
+
+  -- Réponse du fournisseur, telle qu'imprimée : « Disponible »,
+  -- « 21 - Epuisé », « 28 - Arret de comm définitif »…
+  supplier_response  text        not null default '',
+  shipping_date      date,
+
+  -- Colonne « rsvé » de l'export : le livre est déjà là, ou le fournisseur ne
+  -- le servira pas. Il n'y a rien à pointer dessus. C'est une règle métier à
+  -- part entière, elle a donc sa colonne plutôt que d'être déduite d'un calcul
+  -- de quantités.
+  reserved           boolean     not null default false,
 
   -- Prix unitaire. Nullable : toutes les sources ne le portent pas.
   unit_price         numeric(10, 2) check (unit_price >= 0),
@@ -61,9 +74,10 @@ create table if not exists catalog.order_lines (
   quantity_ordered   integer     not null default 0 check (quantity_ordered   >= 0),
   quantity_delivered integer     not null default 0 check (quantity_delivered >= 0),
 
-  -- Reste annoncé par la source, quand elle le porte explicitement. Il peut
-  -- différer de la soustraction — une annulation partielle, un reliquat soldé
-  -- autrement — et c'est la source qui a raison.
+  -- Reste à pointer, tel que la source le dit. Vaut 0 sur une ligne réservée,
+  -- la quantité commandée sinon. Il peut différer de la soustraction — une
+  -- annulation partielle, un reliquat soldé autrement — et c'est la source qui
+  -- a raison.
   quantity_pending   integer     check (quantity_pending >= 0),
 
   -- Ce qu'il reste à servir, calculé par la base et jamais saisi : deux
@@ -111,11 +125,20 @@ revoke all on catalog.order_lines from public, anon, authenticated;
 --  qualifiés en entier ci-dessous.
 -- -----------------------------------------------------------------------------
 
-create or replace function public.lookup_order_lines(p_isbn text)
+-- Toute évolution de ce type de retour impose un `drop function` : Postgres
+-- refuse de remplacer une fonction dont la signature de sortie change.
+drop function if exists public.lookup_order_lines(text);
+
+create function public.lookup_order_lines(p_isbn text)
 returns table (
   order_reference    text,
   customer           text,
   title              text,
+  author             text,
+  publisher          text,
+  supplier_response  text,
+  shipping_date      date,
+  reserved           boolean,
   unit_price         numeric,
   currency           text,
   quantity_ordered   integer,
@@ -131,6 +154,11 @@ as $$
     l.order_reference,
     l.customer,
     l.title,
+    l.author,
+    l.publisher,
+    l.supplier_response,
+    l.shipping_date,
+    l.reserved,
     l.unit_price,
     l.currency,
     l.quantity_ordered,
@@ -141,7 +169,8 @@ as $$
   -- main arrive parfois avec des tirets, et il vaut mieux le rapprocher que le
   -- rejeter.
   where l.isbn = regexp_replace(coalesce(p_isbn, ''), '[^0-9]', '', 'g')
-  -- Ce qui reste à servir d'abord : c'est ce que l'opérateur cherche.
+  -- Ce qui reste à pointer d'abord ; une ligne réservée n'est pas cachée pour
+  -- autant : savoir qu'un livre était déjà là est une information, pas du bruit.
   order by l.quantity_remaining desc, l.order_reference
   limit 50;
 $$;
