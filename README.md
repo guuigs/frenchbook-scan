@@ -257,8 +257,9 @@ là* : le surplus entre en stock, le livre hors bon n'entre pas, son ISBN n'ayan
 été confronté à aucune ligne écrite. Un fichier d'import n'est pas un rapport :
 la moindre ligne parasite entre en stock comme les autres.
 
-Le même CSV part par mail en un geste, vers l'adresse du service commercial,
-avec pour objet « csv commande n°*référence* ». Le fichier est expédié par le
+Le même CSV part par mail en un geste, d'une adresse personnelle vérifiée chez
+Resend vers celle du service commercial, avec pour objet
+« csv commande n°*référence* ». Le fichier est expédié par le
 serveur : `mailto:` ne sait pas joindre de pièce, et la feuille de partage iOS
 ne sait pas pré-remplir un destinataire. C'est aussi ce qui permet à l'adresse
 d'être écrite côté serveur, hors d'atteinte du navigateur — la route ne la lit
@@ -298,8 +299,18 @@ Trois variables facultatives :
 | Variable | Rôle |
 |---|---|
 | `MISTRAL_OCR_MODEL` | Modèle de lecture (`mistral-ocr-latest` par défaut). |
-| `RESEND_API_KEY` | Active « Envoyer le CSV par mail ». Sans elle, le bouton répond que l'envoi n'est pas configuré. |
-| `MAIL_FROM` | Expéditeur du mail (`reception@frenchbookdistribution.com` par défaut). Son domaine doit être vérifié chez Resend, sinon l'API refuse l'envoi. |
+| `RESEND_API_KEY` | Active « Envoyer le CSV par mail ». |
+| `MAIL_FROM` | Adresse d'expédition. Obligatoire dès que le mail est activé, sans valeur par défaut. |
+
+Les deux vont ensemble : sans l'une ou l'autre, le bouton répond laquelle
+manque plutôt que d'échouer sans raison lisible.
+
+L'expédition part d'un **compte Resend personnel**, et Resend n'accepte qu'une
+adresse appartenant à un domaine vérifié dans ce compte-là. `MAIL_FROM` est donc
+l'adresse de ce domaine personnel — elle n'a aucun rapport avec celle du
+destinataire, et rien n'est deviné à sa place : une adresse par défaut ferait
+échouer chaque envoi sur un refus de l'API sans dire lequel des deux réglages
+est en cause.
 
 Le destinataire, lui, n'est pas une variable : il est écrit dans
 `src/server/mail.ts`.

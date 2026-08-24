@@ -12,12 +12,22 @@ import "server-only";
 const RECIPIENT = "info@frenchbookdistribution.com";
 
 /**
- * L'expéditeur doit appartenir à un domaine vérifié chez Resend, sans quoi
- * l'API refuse l'envoi. La variable permet d'en changer sans redéploiement de
- * code, le temps que la vérification DNS aboutisse.
+ * L'expéditeur, sans valeur par défaut.
+ *
+ * Resend n'accepte que des adresses d'un domaine vérifié dans le compte qui
+ * envoie — ici un compte personnel, dont le domaine n'a rien à voir avec celui
+ * du destinataire. Deviner cette adresse ferait échouer chaque envoi sur un
+ * refus de l'API, sans dire lequel des deux réglages manque.
  */
 function sender(): string {
-  return process.env.MAIL_FROM?.trim() || `reception@frenchbookdistribution.com`;
+  const from = process.env.MAIL_FROM?.trim();
+  if (!from) {
+    throw new MailError(
+      "MAIL_FROM n’est pas configurée : indiquez l’adresse d’expéditeur vérifiée chez Resend.",
+      501,
+    );
+  }
+  return from;
 }
 
 export class MailError extends Error {
@@ -72,12 +82,12 @@ export async function sendCsv({ reference, filename, csv }: CsvMail): Promise<vo
 
   if (!response.ok) {
     const detail = await response.text();
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       throw new MailError("Clé Resend refusée. Vérifiez RESEND_API_KEY.", 502);
     }
-    if (response.status === 422) {
+    if (response.status === 403 || response.status === 422) {
       throw new MailError(
-        `Expéditeur refusé (${sender()}) : le domaine doit être vérifié chez Resend.`,
+        `Expéditeur refusé (${sender()}) : cette adresse doit appartenir à un domaine vérifié dans votre compte Resend.`,
         502,
       );
     }
