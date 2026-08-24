@@ -17,7 +17,7 @@ elle produit un récapitulatif des écarts et efface tout.
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
 | 2. Lecture | Chaque page passe dans l'**endpoint OCR documentaire de Mistral**, côté serveur, sous un schéma JSON strict. |
 | 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
-| 4. Scan | Caméra en continu. Un exemplaire attendu → compte rendu vert avec la commande de destination, un bouton pour enchaîner. Plusieurs exemplaires, ou titre déjà complet → feuille de saisie. |
+| 4. Scan | Caméra en continu. Un exemplaire attendu → flash vert bref, sans commande affichée. Plusieurs exemplaires, ou titre déjà complet → feuille de saisie, avec la répartition par commande. |
 | 5. Clôture | Manques, surplus, abîmés, hors commande. Récapitulatif PDF, liste d'import CSV — téléchargeable ou envoyée par mail — puis **purge totale**. |
 
 ## La fiabilité de lecture
@@ -193,19 +193,20 @@ livre est bien dans le carton ne dit donc pas encore où il doit partir.
 interroge un référentiel de commandes par ISBN et affiche ce qu'il en dit :
 quelles commandes attendent ce titre, pour quel client, en quelle quantité.
 
-**Chaque livre passe par un écran qui attend un geste**, mais pas le même écran
-selon ce qu'il y a à décider. C'est ce partage qui garde la cadence :
+**La cadence prime sur l'affichage** : la commande de destination ne se voit
+plus au moment du scan, seulement au récapitulatif du carton et sur la fiche
+du livre. Deux cas, deux écrans :
 
 - **un exemplaire attendu**, le cas de l'immense majorité des lignes : il n'y a
-  aucune quantité à trancher, donc aucune saisie à ouvrir. Un compte rendu vert
-  plein écran annonce le titre et la commande de destination, et un bouton
-  « Suivant » rend la main. La recherche en base prend quelques centaines de
-  millisecondes : l'écran s'affiche sans attendre, un anneau tourne à la place
-  de la commande, et le bouton — ancré en bas — ne bouge pas quand la réponse
-  arrive. Il est donc visable avant même de savoir.
+  aucune quantité à trancher, donc aucune saisie à ouvrir. La recherche en base
+  (quelques centaines de millisecondes) se fait sans rien afficher, puis un
+  flash vert plein écran annonce le titre, sans commande ni bouton — il
+  s'efface tout seul, comme n'importe quel autre livre compté. Si plusieurs
+  commandes se disputent le titre, la répartition ne peut pas se deviner : la
+  feuille de saisie s'ouvre à la place.
 - **plusieurs exemplaires attendus, ou un titre déjà complet qui repasse** : là
   il y a une quantité à vérifier, et la feuille de saisie s'ouvre avec son
-  compteur, sa répartition et ses exemplaires abîmés.
+  compteur, sa répartition par commande et ses exemplaires abîmés.
 
 Un livre reste toujours rattrapable après coup : le bouton « Signaler abîmé »
 de l'écran de scan porte sur le dernier titre compté.

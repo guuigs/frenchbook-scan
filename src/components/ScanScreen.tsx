@@ -6,6 +6,7 @@ import { useCarton } from "@/lib/store";
 import { SCAN_REGION, useBarcodeScanner } from "@/lib/useBarcodeScanner";
 import { formatIsbn } from "@/lib/isbn";
 import { play, unlockAudio } from "@/lib/feedback";
+import { lookupOrders } from "@/lib/orders";
 import {
   displayPublisher,
   expected,
@@ -15,9 +16,9 @@ import {
   totalCounted,
   totalExpected,
 } from "@/lib/order";
-import type { OrderLine } from "@/lib/types";
+import { DAILY_ORDERS, type OrderLine } from "@/lib/types";
 import { IconAlert, IconCheck, IconChevronRight, IconList } from "./icons";
-import { Confirmation } from "./Confirmation";
+import { proposeSplit } from "./OrderPicker";
 import { QuantitySheet, type ScanConfirmation } from "./QuantitySheet";
 import { UnknownCodeSheet } from "./UnknownCodeSheet";
 import { Checklist } from "./Checklist";
@@ -27,7 +28,7 @@ interface Flash {
   tone: "ok" | "alert";
   counter: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
 }
 
 /** Le dernier livre compté, cible du bouton « Abîmé ». */
@@ -72,22 +73,71 @@ export function ScanScreen() {
 
   const [pendingLine, setPendingLine] = useState<OrderLine | null>(null);
   /**
-   * Livre attendu en un seul exemplaire : il n'y a pas de quantité à trancher,
-   * donc pas de feuille à ouvrir. Le compte rendu suffit.
+   * Livre attendu en un seul exemplaire, le temps de savoir à quelle commande
+   * il revient. Rien ne s'affiche pendant ce court instant — juste le flash
+   * une fois la réponse là — mais le scan reste en pause pour ne pas lire le
+   * même code une seconde fois avant que le premier passage soit enregistré.
    */
-  const [confirming, setConfirming] = useState<OrderLine | null>(null);
+  const [resolving, setResolving] = useState<OrderLine | null>(null);
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [showChecklist, setShowChecklist] = useState(false);
   const [flash, setFlash] = useState<Flash | null>(null);
   const [lastScan, setLastScan] = useState<LastScan | null>(null);
 
   const paused =
-    pendingLine !== null || confirming !== null || unknownCode !== null || showChecklist;
+    pendingLine !== null || resolving !== null || unknownCode !== null || showChecklist;
 
-  const showFlash = (tone: Flash["tone"], counter: string, title: string, subtitle: string) => {
+  const showFlash = (tone: Flash["tone"], counter: string, title: string, subtitle?: string) => {
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     setFlash({ id: Date.now(), tone, counter, title, subtitle });
     flashTimer.current = window.setTimeout(() => setFlash(null), 1100);
+  };
+
+  /**
+   * Livre attendu en un seul exemplaire, sans commande concurrente : rien à
+   * arbitrer, donc pas de feuille à ouvrir — juste le flash, comme n'importe
+   * quel autre livre compté. La commande de destination ne s'affiche nulle
+   * part ici ; elle se retrouve au récapitulatif du carton et sur la fiche du
+   * livre.
+   */
+  const confirmSingle = async (line: OrderLine) => {
+    setResolving(line);
+
+    let matches;
+    try {
+      matches = await lookupOrders(line.isbn);
+    } catch {
+      // Recherche en échec : exemplaire non affecté plutôt que rangé d'office
+      // dans les commandes journalières sur la foi d'une panne.
+      setResolving(null);
+      record(line, { counted: 1, damaged: 0, allocations: [] });
+      showFlash("ok", "1/1", line.title);
+      return;
+    }
+
+    if (matches.length > 1) {
+      // Plusieurs commandes se disputent le titre : la répartition se fait à
+      // la main, dans la feuille complète.
+      setResolving(null);
+      setPendingLine(line);
+      return;
+    }
+
+    const split = proposeSplit(matches, 1);
+    const allocations =
+      matches.length === 0
+        ? [{ orderReference: DAILY_ORDERS, customer: "", quantity: 1 }]
+        : matches
+            .map((match) => ({
+              orderReference: match.orderReference,
+              customer: match.customer,
+              quantity: split[match.orderReference] ?? 0,
+            }))
+            .filter((entry) => entry.quantity > 0);
+
+    setResolving(null);
+    record(line, { counted: 1, damaged: 0, allocations });
+    showFlash("ok", "1/1", line.title);
   };
 
   const onCode = (code: string) => {
@@ -101,10 +151,10 @@ export function ScanScreen() {
          * La feuille de saisie ne s'ouvre que s'il y a une quantité à vérifier :
          * plusieurs exemplaires attendus, ou un titre déjà complet qui repasse.
          * Le reste — l'immense majorité des lignes — n'a qu'un exemplaire
-         * attendu et se solde d'un compte rendu.
+         * attendu et se solde d'un flash.
          */
         if (expected(outcome.line) === 1 && !outcome.alreadyComplete) {
-          setConfirming(outcome.line);
+          void confirmSingle(outcome.line);
         } else {
           setPendingLine(outcome.line);
         }
@@ -251,24 +301,10 @@ export function ScanScreen() {
             {flash.counter}
           </p>
           <p className="mt-5 line-clamp-2 text-[16px] font-medium">{flash.title}</p>
-          <p className="mt-1 truncate text-[13px] text-white/85">{flash.subtitle}</p>
+          {flash.subtitle ? (
+            <p className="mt-1 truncate text-[13px] text-white/85">{flash.subtitle}</p>
+          ) : null}
         </div>
-      ) : null}
-
-      {confirming ? (
-        <Confirmation
-          line={confirming}
-          onNext={(confirmation) => {
-            record(confirming, confirmation);
-            setConfirming(null);
-          }}
-          // Plusieurs commandes pour un même titre : la répartition se fait à
-          // la main, dans la feuille complète.
-          onSplit={() => {
-            setPendingLine(confirming);
-            setConfirming(null);
-          }}
-        />
       ) : null}
 
       {pendingLine ? (
@@ -280,16 +316,14 @@ export function ScanScreen() {
             record(line, confirmation);
             setPendingLine(null);
             /*
-             * Le voile confirme d'un coup d'œil ce qui vient d'être enregistré,
-             * commande comprise : c'est la seule trace visible de l'affectation
-             * une fois la feuille refermée. Le compte rendu du cas à un
-             * exemplaire, lui, se ferme sur un geste et n'a rien à rappeler.
+             * Le voile confirme d'un coup d'œil que l'enregistrement a eu lieu.
+             * La commande de destination ne s'y affiche plus : elle se retrouve
+             * au récapitulatif du carton et sur la fiche du livre.
              */
             showFlash(
               confirmation.counted === expected(line) ? "ok" : "alert",
               `${confirmation.counted}/${expected(line)}`,
               line.title,
-              describeAllocations(confirmation.allocations),
             );
           }}
           onCancel={() => {
@@ -323,14 +357,6 @@ export function ScanScreen() {
       {showChecklist ? <Checklist onClose={() => setShowChecklist(false)} /> : null}
     </main>
   );
-}
-
-function describeAllocations(
-  allocations: ScanConfirmation["allocations"],
-): string {
-  if (allocations.length === 0) return "non affecté";
-  if (allocations.length > 1) return `${allocations.length} commandes`;
-  return allocations[0].customer || allocations[0].orderReference;
 }
 
 /**

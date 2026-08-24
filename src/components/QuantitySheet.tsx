@@ -19,12 +19,13 @@ export interface ScanConfirmation {
 }
 
 /**
- * Validation d'un livre dont la quantité demande un arbitrage.
+ * Validation d'un livre dont la quantité ou la commande demande un arbitrage.
  *
- * Elle ne s'ouvre plus à chaque scan : un titre attendu en un seul exemplaire
- * n'a pas de quantité à trancher, et se solde du compte rendu de `Confirmation`.
- * Restent les deux cas qui posent une vraie question — plusieurs exemplaires
- * attendus, ou un titre déjà complet qui repasse devant l'objectif.
+ * Elle ne s'ouvre plus à chaque scan : un titre attendu en un seul exemplaire,
+ * réclamé par une seule commande, se solde d'un flash. Restent les cas qui
+ * posent une vraie question — plusieurs exemplaires attendus, un titre déjà
+ * complet qui repasse devant l'objectif, ou plusieurs commandes qui se
+ * disputent le même titre.
  *
  * La quantité attendue et la répartition proposée sont pré-remplies : dans le
  * cas courant — un titre, une commande — il ne reste qu'à confirmer.
