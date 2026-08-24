@@ -57,6 +57,19 @@ export interface ImportRow {
    * colonne plutôt que de rejeter la ligne ou de l'ignorer.
    */
   unitPrice: number | null;
+  /**
+   * Titre et fournisseur du bon, ajoutés en toutes lettres.
+   *
+   * Librisoft les retrouve normalement seul depuis sa fiche article une fois
+   * l'EAN reconnu — mais le prix de vente, la catégorie et les seuils de
+   * réassort n'ont, eux, aucune source ici : ni le bon de livraison ni le
+   * référentiel de commandes ne les portent. Pas question d'écrire une valeur
+   * inventée à leur place, qui écraserait une fiche article correcte. Titre et
+   * fournisseur, en revanche, sont réellement connus : ajoutés à toutes fins
+   * utiles pendant qu'on vérifie si Librisoft les lit.
+   */
+  title: string;
+  supplier: string;
 }
 
 /**
@@ -98,6 +111,8 @@ export function importRows(session: CartonSession): ImportRow[] {
       quantity,
       discountPercent: discountForIsbn(session, isbn),
       unitPrice: priceForIsbn(session, isbn),
+      title: line.title,
+      supplier: session.supplier,
     });
   }
 
@@ -138,19 +153,38 @@ function priceForIsbn(session: CartonSession, isbn: string): number | null {
 }
 
 /**
- * Liste d'import Librisoft : le code ISBN, la quantité, la remise, et le prix
- * d'achat HT.
+ * Un champ texte peut porter le séparateur lui-même (un titre avec un
+ * point-virgule serait rarissime, mais un titre avec un accent ou une virgule
+ * ne l'est pas) : il est entouré de guillemets dès qu'il contient le
+ * séparateur, un guillemet ou un retour à la ligne, guillemet interne doublé —
+ * la règle CSV minimale, pour ne pas casser l'alignement des colonnes qui
+ * suivent.
+ */
+function csvField(value: string): string {
+  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/**
+ * Liste d'import Librisoft : le code ISBN, la quantité, la remise, le prix
+ * d'achat HT, le titre et le fournisseur.
  *
  * La liste mémorisée de Librisoft se chargeait jusqu'ici depuis un fichier
  * texte ou CSV à deux colonnes — « le code ISBN des articles puis la
  * quantité » — et rien de plus ; c'est le seul format dont on avait la preuve
- * qu'il était lu. Ces deux colonnes en plus, remise et prix d'achat, sont une
- * tentative : à vérifier à l'usage que Librisoft les lit bien plutôt que de
- * rejeter la ligne entière ou de les ignorer silencieusement.
+ * qu'il était lu. Ces colonnes en plus sont une tentative : à vérifier à
+ * l'usage que Librisoft les lit bien plutôt que de rejeter la ligne entière ou
+ * de les ignorer silencieusement.
  *
- * Une valeur inconnue laisse la colonne vide plutôt que d'écrire un zéro, qui
- * se lirait comme une remise ou un prix nul plutôt que comme une absence
- * d'information.
+ * Prix de vente, catégorie et seuils de réassort n'y figurent volontairement
+ * pas : rien dans le bon de livraison ni dans le référentiel de commandes ne
+ * les porte, et écrire une valeur inventée écraserait une fiche article
+ * correcte plutôt que de la compléter. Titre et fournisseur, en revanche, sont
+ * réellement connus — Librisoft les retrouve normalement seul depuis sa fiche
+ * article une fois l'EAN reconnu, mais ça ne coûte rien de les fournir aussi.
+ *
+ * Une valeur numérique inconnue laisse la colonne vide plutôt que d'écrire un
+ * zéro, qui se lirait comme une remise ou un prix nul plutôt que comme une
+ * absence d'information.
  *
  * Les choix de forme visent le lecteur le plus strict possible, comme pour les
  * deux colonnes d'origine :
@@ -164,11 +198,15 @@ function priceForIsbn(session: CartonSession, isbn: string): number | null {
  *   chiffre du premier ISBN.
  */
 export function buildCsv(session: CartonSession): Blob {
-  const rows = importRows(session).map(
-    (row) =>
-      `${row.isbn};${row.quantity};${row.discountPercent !== null ? row.discountPercent.toFixed(2) : ""};${
-        row.unitPrice !== null ? row.unitPrice.toFixed(2) : ""
-      }`,
+  const rows = importRows(session).map((row) =>
+    [
+      row.isbn,
+      String(row.quantity),
+      row.discountPercent !== null ? row.discountPercent.toFixed(2) : "",
+      row.unitPrice !== null ? row.unitPrice.toFixed(2) : "",
+      csvField(row.title),
+      csvField(row.supplier),
+    ].join(";"),
   );
   const content = rows.length > 0 ? `${rows.join("\r\n")}\r\n` : "";
   return new Blob([content], { type: "text/csv;charset=utf-8" });
