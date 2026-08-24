@@ -127,6 +127,15 @@ export function IconShare(props: IconProps) {
   );
 }
 
+export function IconMail(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" />
+      <path d="m2.5 4.75 5.5 4 5.5-4" />
+    </Svg>
+  );
+}
+
 export function IconSearch(props: IconProps) {
   return (
     <Svg {...props}>

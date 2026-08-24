@@ -15,58 +15,62 @@ elle produit un récapitulatif des écarts et efface tout.
 | Phase | Ce qui se passe |
 |---|---|
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
-| 2. Lecture | Chaque page passe dans **deux moteurs Mistral indépendants**, côté serveur, et les résultats sont comparés champ à champ. |
+| 2. Lecture | Chaque page passe dans l'**endpoint OCR documentaire de Mistral**, côté serveur, sous un schéma JSON strict. |
 | 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
 | 4. Scan | Caméra en continu. Quantité 1 → voile vert plein écran, 1,2 s. Quantité > 1 → feuille de validation. |
-| 5. Clôture | Manques, surplus, abîmés, hors commande. Export PDF + CSV, puis **purge totale**. |
+| 5. Clôture | Manques, surplus, abîmés, hors commande. Récapitulatif PDF, liste d'import CSV — téléchargeable ou envoyée par mail — puis **purge totale**. |
 
 ## La fiabilité de lecture
 
 C'est le point critique : une erreur d'OCR sur un ISBN ou une quantité passe
-directement en litige fournisseur. Trois garde-fous se cumulent.
+directement en litige fournisseur.
 
-**Double lecture croisée.** Chaque page est envoyée en parallèle à deux moteurs
-Mistral différents — l'endpoint OCR documentaire et un modèle vision — avec le
-*même* schéma JSON strict, donc des sorties directement comparables champ à
-champ. Deux moteurs qui se trompent au même endroit de la même façon, c'est très
-improbable ; deux moteurs qui divergent, c'est un signal.
+**Une seule lecture, par l'endpoint OCR documentaire.** Chaque page part avec un
+schéma JSON strict qui impose la forme de la réponse. Un modèle vision a
+longtemps fourni une seconde lecture à confronter champ à champ ; l'OCR s'étant
+montré fiable sur ces bordereaux, le second appel ne payait plus son temps
+d'attente ni sa note d'API. Ce qui reste sont les contrôles qui se démontrent
+sans second avis.
 
-L'endpoint OCR ne prend pas de consigne libre : il ne reçoit que le schéma. Les
-règles de découpage vivent donc **dans le schéma lui-même**, à sa racine, et non
-seulement dans l'instruction envoyée au modèle vision — sans quoi la moitié de la
-double lecture travaillerait sans elles. Un second moteur qui répond sans avoir
-lu la moindre ligne est écarté plutôt que compté comme un avis : c'est une panne
-silencieuse, et la page est annoncée dégradée.
+L'endpoint OCR ne prend aucune consigne libre : il ne reçoit que le schéma. Les
+règles de découpage vivent donc **dans le schéma lui-même**, portées par sa
+`description` — exemple travaillé et contrôle de cohérence compris. C'est le
+seul canal qui atteigne le moteur.
 
 **Clé de contrôle ISBN.** Tout ISBN est validé par sa clé (EAN-13 ou ISBN-10,
-converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 — détecté même
-quand les deux moteurs lisent la même chose.
+converti en 13). Un chiffre mal lu casse la clé dans 9 cas sur 10 : c'est une
+certitude arithmétique, pas une opinion, et c'est ce qui protège le champ dont
+dépend l'identification au scan.
 
-**Ce que la clé peut trancher, elle le tranche.** Quand les deux moteurs lisent
-deux ISBN différents et qu'un seul porte une clé de contrôle valide, il n'y a
-rien à arbitrer : l'autre est faux. L'app retient le valide sans rien demander,
-et se contente de le mentionner. Faire valider ce cas par un humain reviendrait à
-lui demander de recalculer une clé EAN-13 de tête.
+**Ce qui n'est plus couvert, et il faut le dire.** Une quantité mal lue n'a plus
+de contradicteur. Si l'OCR lit 2 là où le bordereau porte 3, le carton se
+clôture sur un excédent d'un exemplaire, sans alerte. C'est la contrepartie
+assumée de la lecture unique.
 
-**Rien n'est deviné pour autant.** Deux ISBN valides mais différents, ou deux
-clés fausses, restent indécidables : l'app affiche les deux lectures côte à côte
-avec la photo de la page, et attend l'arbitrage. Le bouton de validation reste
-désactivé tant qu'il reste une ligne à trancher.
+**Rien n'est deviné pour autant.** Le schéma interdit de compléter un ISBN de
+mémoire ou d'en corriger la clé : une lecture fidèle mais fausse est utile,
+puisque la clé la démasque, alors qu'une lecture « réparée » passe pour juste.
+Le bouton de validation reste désactivé tant qu'il reste une ligne à trancher.
 
-**Trois familles arrêtent l'opérateur, et trois seulement :**
+**Deux familles arrêtent l'opérateur, et deux seulement :**
 
-1. **un ISBN faux ou absent** — clé de contrôle cassée, champ vide ;
-2. **deux ISBN valides en concurrence sur un même titre** — les deux moteurs en
-   proposent un chacun et la clé ne départage pas, ou le même libellé se
-   retrouve sur deux codes ;
-3. **une quantité incohérente** — les deux lectures divergent, la case est vide,
-   ou une ligne n'a été vue que par un seul moteur alors que les deux ont
-   répondu, auquel cas rien ne corrobore sa quantité.
+1. **un ISBN faux, absent, ou posé sur deux titres sans rapport** — clé cassée,
+   champ vide, ou même code retrouvé sur deux libellés étrangers l'un à l'autre
+   une fois les pages réunies ;
+2. **une quantité absente** — aucune case remplie sur la ligne du titre.
 
 Tout le reste s'affiche sur la ligne, corrigeable, sans entrer dans la file :
-titre ou éditeur lus différemment, titre absent, doublon d'ISBN fusionné, ISBN
-tranché par sa clé. Une file qui contient tout ne se distingue pas d'une file
-vide : on finit par tout valider sans regarder.
+titre non lu, doublon d'ISBN fusionné, série dont les tomes partagent un
+libellé. Une file qui contient tout ne se distingue pas d'une file vide : on
+finit par tout valider sans regarder.
+
+**Les variantes se vérifient, elles n'arrêtent pas.** Un même titre porté par
+plusieurs ISBN est le cas courant d'une série — trois tomes édités sous un
+libellé rigoureusement identique — ou d'un livre façonné en deux versions. Ces
+lignes vont dans un bloc à part, « Vérifier les variantes », groupé par titre,
+qui ne bloque pas le passage au scan. La validation s'y fait **ISBN par ISBN** :
+les libellés étant souvent identiques au caractère près, seul le code distingue
+les tomes, et un bouton par groupe reviendrait à ne rien vérifier.
 
 **Les colonnes doivent se répondre.** Trois contrôles ne portent pas sur la
 lecture d'un champ mais sur le lien entre l'ISBN et le titre — le lien qui décide
@@ -74,11 +78,14 @@ quel livre sera décompté sur quelle ligne. Ceux-là bloquent, alors qu'une sim
 divergence d'orthographe ne bloque pas :
 
 - **tout ISBN a un titre.** Sans lui, l'écran de scan annonce un livre que
-  l'opérateur ne peut pas reconnaître ;
-- **un titre ne porte qu'un ISBN.** Le même libellé sur deux codes, c'est un
-  bloc recopié pendant qu'un autre perdait le sien ;
+  l'opérateur ne peut pas reconnaître — signalé, sans bloquer : l'ISBN suffit à
+  compter ;
+- **un titre ne porte qu'un ISBN.** Le même libellé sur deux codes est le plus
+  souvent une série ; c'est parfois un bloc recopié pendant qu'un autre perdait
+  le sien. D'où une vérification, pas un arrêt ;
 - **un ISBN ne porte qu'un sujet.** Deux lignes de même code aux titres sans
-  rapport, ce n'est pas un doublon : c'est un rattachement faux d'un côté.
+  rapport, ce n'est pas un doublon : c'est un rattachement faux d'un côté, et
+  celui-là bloque.
 
 La comparaison des titres se fait à l'identique, jamais par ressemblance :
 `DRUUNA T01` et `DRUUNA T02` se ressemblent à 90 % et sont deux livres.
@@ -89,23 +96,15 @@ rien demander, et l'app garde **la plus grande** quantité des deux, jamais leur
 somme — additionner ferait chercher un exemplaire qui n'existe pas, et le carton
 finirait en manque imaginaire.
 
-**Contrôle du total imprimé.** Quand le bordereau porte un total d'exemplaires ou
-de références (« QUANTITE: 23 », « ARTICLES: 19 »), l'app le compare à ce qu'elle
-a lu, dans les deux sens. En moins, c'est une ligne sautée par les deux moteurs à
-la fois — la double lecture, elle, ne voit rien quand ils omettent la même chose.
-En trop, c'est un complément de libellé passé pour un titre, ou un ISBN qui
-figurait réellement deux fois. L'avertissement est indicatif et non bloquant : sur
-un bordereau multi-échéances, le total imprimé couvre souvent plus que les pages
-photographiées. Il ne bloque donc pas, mais il ne se franchit pas sans avoir été
-lu : la dernière porte avant le scan le rappelle et change de libellé pour
-« Scanner malgré l'écart ».
+**Le total imprimé n'est pas recoupé.** Le récapitulatif de pied de bordereau a
+servi un temps à contrôler la somme des lignes lues. Ce contrôle a été retiré :
+il couvre l'expédition entière, souvent plusieurs colis (« Nbre colis : 2 »),
+alors que le carton en main n'en est qu'un — l'écart se déclenchait sur des
+lectures parfaitement justes. Une alarme qui se trompe souvent apprend à ignorer
+toutes les alarmes, y compris la clé ISBN, qui elle est fiable. Les totaux sont
+toujours extraits et conservés, à titre de référence.
 
-Le prompt prend soin de distinguer ce total de la ligne « TOTAL COMMANDE
-REFERENCE ... ARTICLES 77 » imprimée juste à côté sur les bordereaux Hachette :
-celle-là couvre la commande entière, toutes livraisons confondues, et ferait
-sonner l'alarme à chaque carton.
-
-Le prompt impose par ailleurs aux modèles de renvoyer une valeur vide plutôt que
+Le schéma impose par ailleurs au moteur de renvoyer une valeur vide plutôt que
 de compléter de mémoire — un ISBN plausible mais inventé serait le pire des cas,
 puisqu'il passerait la clé de contrôle.
 
@@ -116,8 +115,8 @@ Hachette, dont les mises en page n'ont rien de commun :
 
 - **Pas de colonne « auteur ».** La seconde ligne de la cellule de libellé porte
   l'**éditeur ou la collection** (`FOLIO`, `GALLIMARD JEUNE`, `GLENAT`,
-  `HACHETTE HEROES`). Demander un auteur produirait des divergences fantômes
-  entre les deux moteurs sur presque chaque ligne.
+  `HACHETTE HEROES`). Demander un auteur ferait inventer une colonne qui
+  n'existe pas.
 - **Une seule colonne de quantité** le plus souvent (`Qté`, `QTE`). Le champ
   « commandé » n'est renseigné que si une colonne distincte existe.
 - **Un article occupe un bloc de deux lignes imprimées**, parfois trois. La
@@ -127,8 +126,8 @@ Hachette, dont les mises en page n'ont rien de commun :
   documents.
 - **Références internes du distributeur** mêlées aux ISBN dans la même colonne
   (`20 3087 8`, `45 0505 0`). Le prompt les exclut du champ `isbn` et les
-  extrait dans un champ `reference` à part, où elles servent de seconde clé
-  d'appariement entre les deux lectures.
+  extrait dans un champ `reference` à part, seul repère qui reste sur le papier
+  quand l'ISBN est mal lu.
 - **Un intertitre coupe le tableau en deux.** `R E P O N S E S`, `NON-SERVI DE
   VOTRE LIVRAISON`, `MANQUANT`, `Reliquat` : à partir de là et jusqu'au bas du
   tableau, plus rien n'est dans le carton, même si les articles portent une
@@ -139,17 +138,6 @@ Hachette, dont les mises en page n'ont rien de commun :
   faux manque au récapitulatif.
 - **Annotations manuscrites** (cercles du réceptionnaire autour des quantités) :
   le prompt impose de recopier l'imprimé, jamais le manuscrit.
-
-Une ligne « vue par un seul moteur » se traite selon la raison. Si un seul moteur
-a répondu pour toute la page, la lecture croisée n'a jamais eu lieu : la page est
-marquée dégradée, un bandeau l'annonce, et rien ne bloque — bloquer là rouvrirait
-tout le bon dès qu'un moteur ne répond pas, ce qui reviendrait à le ressaisir à
-la main. La clé de contrôle reste le garde-fou sur l'ISBN.
-
-Si les deux moteurs ont répondu et qu'un seul a vu la ligne, c'est un oubli franc
-de l'autre sur une page qu'il a par ailleurs lue. Sa quantité n'a alors aucun
-contradicteur, et c'est le genre d'écart qui finit en manque non détecté :
-celle-là bloque.
 
 ### Le décalage d'un bloc, l'erreur qui ne se voit pas
 
@@ -169,35 +157,32 @@ ARTICLES         QTE   LIBELLE
 
 Deux façons de se tromper, toutes deux invisibles au scan :
 
-- **Le décalage.** Un moteur qui glisse d'un cran rattache `9782200640354` aux
+- **Le décalage.** Une lecture qui glisse d'un cran rattache `9782200640354` aux
   `AVENTURES D ARSENE LUPIN` au lieu du `CHINOIS`. Le code existe bien dans le
   bon : le livre est simplement décompté sur la mauvaise ligne. Le carton part
   pour complet alors qu'il manque un titre et qu'il y en a un en trop.
 - **Le complément pris pour un titre.** `LFF B1` ou `LIVRE` n'ont pas de
-  quantité, ce sont des compléments. Un moteur qui en fait un article ouvre une
-  ligne de trop — et décale les ISBN de tout ce qui suit.
+  quantité, ce sont des compléments. En faire un article ouvre une ligne de trop
+  — et décale les ISBN de tout ce qui suit.
 
-Quatre mesures se cumulent contre ça :
+Trois mesures se cumulent contre ça :
 
-1. **La quantité est l'ancre.** Le prompt décrit la structure en blocs avec deux
-   exemples travaillés — un de chaque bordereau réel — et pose la règle
-   mécaniquement : un nouvel article commence exactement là où une quantité est
-   imprimée, et nulle part ailleurs. Toute ligne sans quantité est la suite de
-   celle du dessus ; son ISBN appartient au titre au-dessus, jamais à celui du
-   dessous. Les compléments sont ajoutés au titre, jamais traités à part.
-2. **La référence interne sert d'ancre au rapprochement.** Elle est imprimée sur
-   la ligne du titre, donc elle identifie le bloc même quand un moteur s'est
-   trompé d'ISBN. Les deux lectures sont appariées par référence d'abord, par
-   ISBN ensuite, par titre en dernier recours.
-3. **Le contrôle d'alignement.** Quand les deux moteurs désignent le même bloc —
-   même référence ou même ISBN — mais lui donnent deux titres qui n'ont rien à
-   voir, ce n'est pas un titre mal lu, c'est un code rattaché au mauvais libellé.
-   La ligne est signalée « ISBN sur 2 titres » et bloque, avec un rappel de la
-   structure en deux lignes dans l'écran d'arbitrage.
-4. **Le compte des références imprimé en pied de bordereau** (« ARTICLES: 19 »)
-   est comparé au nombre de lignes lues. Plus de lignes que de références annoncées,
-   c'est le signe qu'un complément est passé pour un titre — le seul contrôle qui
-   attrape le cas où les deux moteurs se trompent pareil.
+1. **La quantité est l'ancre.** La description du schéma pose la règle
+   mécaniquement, exemple travaillé à l'appui : un nouvel article commence
+   exactement là où une quantité est imprimée, et nulle part ailleurs. Toute
+   ligne sans quantité est la suite de celle du dessus ; son ISBN appartient au
+   titre au-dessus, jamais à celui du dessous. Les compléments sont ajoutés au
+   titre, jamais traités à part.
+2. **Le contrôle de cohérence, exigé avant la réponse.** Autant d'articles que
+   de quantités imprimées, autant d'ISBN que d'articles. Plus d'articles que de
+   quantités, un complément est passé pour un titre ; un article sans ISBN
+   pendant qu'un autre en a deux, un bloc a été décalé. Dans les deux cas, le
+   schéma demande de reprendre l'appariement depuis le haut du tableau.
+3. **Le contrôle d'alignement, une fois les pages réunies.** Deux lignes portant
+   le même ISBN sur des titres qui n'ont rien à voir ne sont pas un doublon :
+   c'est un code rattaché au mauvais libellé. La ligne est signalée « ISBN sur 2
+   titres » et bloque, avec un rappel de la structure en deux lignes dans
+   l'écran d'arbitrage.
 
 ## Ce que la caméra lit — et ce qu'elle doit ignorer
 
@@ -245,12 +230,45 @@ au 120ᵉ livre d'un carton de 200, l'app repart où elle en était. Une lecture
 interrompue, elle, ne peut pas reprendre — l'app revient à l'accueil plutôt que
 de rester sur un écran figé.
 
-L'export PDF + CSV est proposé au récapitulatif, avant la purge. Sur iOS il
-passe par la feuille de partage native (mail, Fichiers, Drive, AirDrop).
+L'export est proposé au récapitulatif, avant la purge. Sur iOS il passe par la
+feuille de partage native (mail, Fichiers, Drive, AirDrop).
 
-**La clé Mistral ne quitte jamais le serveur.** Le navigateur appelle
-`/api/ocr`, qui parle à Mistral avec la clé stockée en variable
-d'environnement Vercel.
+**Deux fichiers, deux usages qui n'ont rien à voir.**
+
+Le **PDF** est la trace de la réception, à joindre à une réclamation
+fournisseur : manques, surplus, abîmés, non servis, reliquats.
+
+Le **CSV** est une liste d'import pour Librisoft, et rien d'autre. La liste
+mémorisée se charge depuis un fichier portant « le code ISBN des articles puis
+la quantité » — donc deux colonnes, dans cet ordre, aucune ligne d'en-tête (elle
+serait lue comme un article), point-virgule, treize chiffres collés, et pas de
+BOM UTF-8, qui se retrouverait collé au premier chiffre du premier ISBN.
+
+```
+9782854288520;1
+9782854287066;2
+```
+
+N'y figure que ce qui est bon dans le carton : le comptage **moins** les
+exemplaires signalés abîmés, qui partent en réclamation. Ce qui n'a jamais été
+scanné n'y est pas — un manque est une absence, pas une entrée à zéro. Les deux
+cas de bord sont tranchés dans le même sens, *ce qui a été scanné est ce qui est
+là* : le surplus entre en stock, le livre hors bon n'entre pas, son ISBN n'ayant
+été confronté à aucune ligne écrite. Un fichier d'import n'est pas un rapport :
+la moindre ligne parasite entre en stock comme les autres.
+
+Le même CSV part par mail en un geste, vers l'adresse du service commercial,
+avec pour objet « csv commande n°*référence* ». Le fichier est expédié par le
+serveur : `mailto:` ne sait pas joindre de pièce, et la feuille de partage iOS
+ne sait pas pré-remplir un destinataire. C'est aussi ce qui permet à l'adresse
+d'être écrite côté serveur, hors d'atteinte du navigateur — la route ne la lit
+jamais de la requête, sans quoi elle serait un relais ouvert derrière un simple
+code partagé. Le contenu envoyé est vérifié ligne à ligne contre la forme exacte
+du fichier d'import, ce qui lui interdit de servir à autre chose.
+
+**Les clés ne quittent jamais le serveur.** Le navigateur appelle `/api/ocr` et
+`/api/mail`, qui parlent à Mistral et à Resend avec des clés stockées en
+variables d'environnement Vercel.
 
 ## Déploiement
 
@@ -260,8 +278,8 @@ cp .env.example .env.local   # renseigner les trois variables
 npm run dev
 ```
 
-Trois variables d'environnement, à définir en local puis dans Vercel
-(*Settings → Environment Variables*) :
+Trois variables d'environnement obligatoires, à définir en local puis dans
+Vercel (*Settings → Environment Variables*) :
 
 | Variable | Rôle |
 |---|---|
@@ -275,9 +293,16 @@ Générer le secret :
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Deux variables facultatives, `MISTRAL_OCR_MODEL` et `MISTRAL_VISION_MODEL`,
-permettent de changer de modèle sans toucher au code
-(`mistral-ocr-latest` et `mistral-medium-latest` par défaut).
+Trois variables facultatives :
+
+| Variable | Rôle |
+|---|---|
+| `MISTRAL_OCR_MODEL` | Modèle de lecture (`mistral-ocr-latest` par défaut). |
+| `RESEND_API_KEY` | Active « Envoyer le CSV par mail ». Sans elle, le bouton répond que l'envoi n'est pas configuré. |
+| `MAIL_FROM` | Expéditeur du mail (`reception@frenchbookdistribution.com` par défaut). Son domaine doit être vérifié chez Resend, sinon l'API refuse l'envoi. |
+
+Le destinataire, lui, n'est pas une variable : il est écrit dans
+`src/server/mail.ts`.
 
 Le déploiement Vercel est standard : connecter le dépôt, aucune configuration
 de build particulière.
@@ -332,13 +357,18 @@ fond de scène des dialogues rendu atteignable au clavier.
 - **Next.js 16** (App Router) sur Vercel, **TypeScript**, **Tailwind CSS 4**.
 - **Geist** pour la typographie, chargée via `next/font` (aucun décalage de mise
   en page au chargement).
-- **ZXing** (`@zxing/browser`) pour les codes-barres : Safari n'implémente pas
-  l'API `BarcodeDetector`. Les formats sont restreints aux symbologies du livre,
-  ce qui augmente le nombre d'images analysées par seconde.
+- **zxing-wasm** pour les codes-barres : Safari n'implémente pas l'API
+  `BarcodeDetector`. C'est zxing-cpp compilé en WebAssembly — sur une image sans
+  code, le cas qui domine la boucle, il rend la main en 1,8 ms là où le portage
+  JavaScript en demandait 7,0. Ce dernier (`@zxing/library`) reste en secours si
+  le WebAssembly ne se charge pas. Les formats sont restreints aux symbologies
+  du livre.
 - **Zustand** + IndexedDB (`idb-keyval`) pour l'état du carton. `localStorage`
   ne conviendrait pas : quotas trop bas pour un bon de deux cents lignes, et
   écriture synchrone qui ferait tressauter l'écran de scan.
 - **jsPDF** pour le récapitulatif, chargé à la demande.
+- **Resend** pour l'envoi du CSV, appelé en HTTP depuis la route serveur : pas
+  de dépendance ajoutée, pas de connexion SMTP à tenir ouverte en serverless.
 - **Web Audio** pour les bips, avec des timbres distincts entre succès,
   attention et échec.
 
@@ -349,17 +379,19 @@ src/
 ├── app/
 │   ├── page.tsx            Point d'entrée
 │   └── api/
-│       ├── ocr/            Double lecture Mistral (serveur)
+│       ├── ocr/            Lecture Mistral (serveur)
+│       ├── mail/           Envoi du CSV (serveur)
 │       └── session/        Code d'accès et cookie signé
 ├── server/                 Modules jamais envoyés au navigateur
 │   ├── mistral.ts
+│   ├── mail.ts
 │   └── auth.ts
 ├── lib/
 │   ├── isbn.ts             Normalisation et clés de contrôle
-│   ├── reconciler.ts       Croisement des deux lectures
+│   ├── reconciler.ts       Lecture en lignes, contrôles, consolidation
 │   ├── order.ts            Calculs d'écarts
 │   ├── store.ts            État du carton (Zustand + IndexedDB)
-│   ├── export.ts           PDF et CSV
+│   ├── export.ts           PDF, CSV d'import, envoi par mail
 │   ├── useBarcodeScanner.ts
 │   ├── feedback.ts         Bips
 │   ├── images.ts           Redimensionnement avant envoi
@@ -371,17 +403,16 @@ src/
 
 Avec `NEXT_PUBLIC_ENABLE_DEMO=1`, **Réglages → Charger un bon de démonstration**
 injecte un bon fictif de 7 titres qui couvre les deux régimes : ce qui doit
-remonter à l'opérateur — quantités divergentes, clé ISBN cassée, ISBN rattaché au
-mauvais titre — et ce qui doit rester une simple mention — titre lu
-différemment, ligne non recoupée, ISBN tranché par la clé. De quoi parcourir tout
-le flux sans photo ni appel Mistral. À activer en local et sur les préversions,
-jamais en production.
+remonter à l'opérateur — clé ISBN cassée, ISBN rattaché au mauvais titre — et ce
+qui doit rester une simple mention : doublon fusionné, série dont les tomes
+partagent un libellé. De quoi parcourir tout le flux sans photo ni appel
+Mistral. À activer en local et sur les préversions, jamais en production.
 
-La logique métier — clés ISBN, rapprochement, consolidation — est couverte par
-des assertions vérifiées : conversion ISBN-10 → 13, détection d'un chiffre faux
-malgré l'accord des deux moteurs, arbitrage automatique entre une clé valide et
-une clé cassée, divergence de quantité, décalage d'un bloc entre les deux
-lectures, ligne manquée par un moteur, fusion des doublons.
+La logique métier est couverte par des assertions vérifiées : conversion
+ISBN-10 → 13, détection d'un chiffre faux, quantité reportée quand la colonne
+« commandé » manque, décalage d'un bloc, fusion des doublons d'ISBN, variantes
+validées une par une, et forme exacte du fichier d'import — deux colonnes, pas
+d'en-tête, pas de BOM, manquants et abîmés écartés.
 
 ## Limites connues
 

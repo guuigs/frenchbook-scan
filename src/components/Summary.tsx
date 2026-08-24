@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
-import { buildExportFiles, importRows, shareOrDownload } from "@/lib/export";
+import { MAIL_RECIPIENT, buildExportFiles, importRows, mailCsv, shareOrDownload } from "@/lib/export";
 import {
   backorder,
   backorderedLines,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/order";
 import type { CartonSession, OrderLine } from "@/lib/types";
 import { ActionBar, Button, Dialog, Label, Note, Row } from "./ui";
-import { IconChevronLeft, IconShare } from "./icons";
+import { IconChevronLeft, IconMail, IconShare } from "./icons";
 
 export function Summary() {
   const session = useCarton((state) => state.session);
@@ -34,6 +34,8 @@ export function Summary() {
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [mailState, setMailState] = useState<"idle" | "sending" | "sent">("idle");
+  const [mailError, setMailError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const conform = !hasAnomalies(session);
@@ -52,6 +54,18 @@ export function Summary() {
       );
     } finally {
       setExporting(false);
+    }
+  };
+
+  const runMail = async () => {
+    setMailState("sending");
+    setMailError(null);
+    try {
+      await mailCsv(session);
+      setMailState("sent");
+    } catch (error) {
+      setMailState("idle");
+      setMailError(error instanceof Error ? error.message : "L’envoi a échoué. Réessayez.");
     }
   };
 
@@ -182,8 +196,37 @@ export function Summary() {
               {exportError}
             </Note>
           ) : null}
-        </section>
-      </div>
+
+          <div className="mt-2">
+            <Button
+              variant="secondary"
+              disabled={mailState === "sending" || toImport.length === 0}
+              onClick={() => void runMail()}
+            >
+              <IconMail />
+              {mailState === "sending"
+                ? "Envoi…"
+                : mailState === "sent"
+                  ? "Renvoyer le CSV par mail"
+                  : "Envoyer le CSV par mail"}
+            </Button>
+            {mailState === "sent" ? (
+              <Note tone="success" className="mt-2" aria-live="polite">
+                CSV envoyé à {MAIL_RECIPIENT}.
+              </Note>
+            ) : (
+              <p className="px-1 pt-2 text-[12px] text-muted">
+                Vers {MAIL_RECIPIENT}, objet « csv commande n°
+                {session.reference.trim() || "sans référence"} ».
+              </p>
+            )}
+            {mailError ? (
+              <Note tone="danger" className="mt-2" aria-live="polite">
+                {mailError}
+              </Note>
+            ) : null}
+          </div>
+        </section>      </div>
 
       <ActionBar>
         <Button onClick={() => setConfirming(true)}>Clôturer le carton</Button>

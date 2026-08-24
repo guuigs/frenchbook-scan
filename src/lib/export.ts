@@ -256,6 +256,44 @@ export async function buildExportFiles(session: CartonSession): Promise<ExportFi
   };
 }
 
+/** Adresse de destination, pour l'afficher : le serveur ne la lit d'aucun client. */
+export const MAIL_RECIPIENT = "info@frenchbookdistribution.com";
+
+/**
+ * Envoie la liste d'import au service commercial.
+ *
+ * Le fichier part du serveur, pas du téléphone : `mailto:` ne sait pas joindre
+ * de pièce, et la feuille de partage iOS ne sait pas pré-remplir un
+ * destinataire. C'est aussi ce qui permet à l'adresse d'être écrite côté
+ * serveur, hors d'atteinte du navigateur.
+ */
+export async function mailCsv(session: CartonSession): Promise<number> {
+  const csv = await buildCsv(session).text();
+
+  let response: Response;
+  try {
+    response = await fetch("/api/mail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv, reference: session.reference }),
+    });
+  } catch {
+    throw new Error("Réseau indisponible. Vérifiez la connexion de l’appareil.");
+  }
+
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload.error === "string"
+        ? payload.error
+        : `L’envoi a échoué (${response.status}).`,
+    );
+  }
+
+  return typeof payload?.lines === "number" ? payload.lines : 0;
+}
+
 /**
  * Partage via la feuille iOS quand elle est disponible (mail, AirDrop, Fichiers,
  * Drive), sinon téléchargement classique.
