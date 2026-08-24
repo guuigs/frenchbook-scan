@@ -17,7 +17,7 @@ elle produit un récapitulatif des écarts et efface tout.
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
 | 2. Lecture | Chaque page passe dans l'**endpoint OCR documentaire de Mistral**, côté serveur, sous un schéma JSON strict. |
 | 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
-| 4. Scan | Caméra en continu. Quantité 1 → voile vert plein écran, 1,2 s. Quantité > 1 → feuille de validation. |
+| 4. Scan | Caméra en continu. Chaque livre ouvre un écran de validation : combien d'exemplaires, et pour quelle commande client. |
 | 5. Clôture | Manques, surplus, abîmés, hors commande. Récapitulatif PDF, liste d'import CSV — téléchargeable ou envoyée par mail — puis **purge totale**. |
 
 ## La fiabilité de lecture
@@ -184,6 +184,51 @@ Trois mesures se cumulent contre ça :
    titres » et bloque, avec un rappel de la structure en deux lignes dans
    l'écran d'arbitrage.
 
+## À quelle commande appartient ce livre ?
+
+Un carton fournisseur sert plusieurs commandes clients à la fois. Savoir qu'un
+livre est bien dans le carton ne dit donc pas encore où il doit partir.
+
+À chaque scan, une fois le titre retrouvé sur le bon de livraison, l'application
+interroge un référentiel de commandes par ISBN et affiche ce qu'il en dit :
+quelles commandes attendent ce titre, pour quel client, en quelle quantité.
+
+**L'écran de validation s'ouvre désormais à chaque livre**, y compris ceux
+attendus en un seul exemplaire, qui étaient jusqu'ici validés d'office en un
+voile vert d'une seconde. C'est un ralentissement voulu : la question qu'il pose
+ne peut se répondre que le livre en main.
+
+**Un même ISBN peut appartenir à plusieurs commandes**, et c'est le cas qui
+justifie tout le mécanisme. Deux libraires ont commandé le même titre :
+l'application ne peut pas deviner à qui revient l'exemplaire qu'on tient. Elle
+liste donc les commandes concernées avec ce qu'il leur reste à servir, propose
+une répartition — la plus en attente d'abord — et laisse trancher. Un exemplaire
+mal aiguillé part chez le mauvais client sans que rien ne le signale ensuite.
+
+La proposition suit le compteur tant que l'opérateur n'y a pas touché : passer
+de 1 à 2 exemplaires sert un second livre. Dès qu'il a réparti à la main, son
+choix ne bouge plus.
+
+**Un livre sans commande n'arrête rien.** Un réassort, un achat sur stock : la
+ligne l'annonce, le livre est compté, et le récapitulatif le range en entrée de
+stock plutôt que de le faire disparaître.
+
+**Le référentiel est consulté, jamais écrit.** Les affectations décidées au scan
+vivent dans le carton, sur l'appareil, et repartent au récapitulatif — par
+commande, avec le détail des ISBN. Une base qui n'est jamais écrite ne peut pas
+être corrompue par un carton mal clôturé.
+
+Rien de tout cela n'atteint le navigateur : il appelle `/api/orders` avec un
+ISBN, et c'est le serveur qui interroge Supabase. Le détail du verrouillage —
+schéma non exposé, RLS fermée, fonction unique en lecture — est dans
+`supabase/README.md`, avec la marche à suivre pour créer le projet et importer
+le tableur.
+
+Quand le référentiel ne répond pas, le comptage continue : la ligne affiche
+l'erreur, propose de réessayer, et la validation reste possible — le livre est
+alors compté sans commande. Une panne de réseau ne doit pas arrêter une
+réception.
+
 ## Ce que la caméra lit — et ce qu'elle doit ignorer
 
 Un livre validé sans feuille de saisie ne met pas l'écran en pause : l'opérateur
@@ -301,6 +346,8 @@ Trois variables facultatives :
 | `MISTRAL_OCR_MODEL` | Modèle de lecture (`mistral-ocr-latest` par défaut). |
 | `RESEND_API_KEY` | Active « Envoyer le CSV par mail ». |
 | `MAIL_FROM` | Adresse d'expédition. Obligatoire dès que le mail est activé, sans valeur par défaut. |
+| `SUPABASE_URL` | Projet du référentiel de commandes. |
+| `SUPABASE_SECRET_KEY` | Clé **secrète** du projet. Voir `supabase/README.md`. |
 
 Les deux vont ensemble : sans l'une ou l'autre, le bouton répond laquelle
 manque plutôt que d'échouer sans raison lisible.
@@ -391,10 +438,12 @@ src/
 │   ├── page.tsx            Point d'entrée
 │   └── api/
 │       ├── ocr/            Lecture Mistral (serveur)
+│       ├── orders/         Recherche de commande par ISBN (serveur)
 │       ├── mail/           Envoi du CSV (serveur)
 │       └── session/        Code d'accès et cookie signé
 ├── server/                 Modules jamais envoyés au navigateur
 │   ├── mistral.ts
+│   ├── orders.ts
 │   ├── mail.ts
 │   └── auth.ts
 ├── lib/
@@ -402,6 +451,7 @@ src/
 │   ├── reconciler.ts       Lecture en lignes, contrôles, consolidation
 │   ├── order.ts            Calculs d'écarts
 │   ├── store.ts            État du carton (Zustand + IndexedDB)
+│   ├── orders.ts           Appel de /api/orders depuis le navigateur
 │   ├── export.ts           PDF, CSV d'import, envoi par mail
 │   ├── useBarcodeScanner.ts
 │   ├── feedback.ts         Bips
@@ -409,6 +459,8 @@ src/
 │   └── pages.ts            Photos des pages
 └── components/             Un composant par phase
 ```
+
+Le schéma SQL du référentiel et sa marche à suivre sont dans `supabase/`.
 
 ## Tester sans matériel
 
@@ -422,8 +474,9 @@ Mistral. À activer en local et sur les préversions, jamais en production.
 La logique métier est couverte par des assertions vérifiées : conversion
 ISBN-10 → 13, détection d'un chiffre faux, quantité reportée quand la colonne
 « commandé » manque, décalage d'un bloc, fusion des doublons d'ISBN, variantes
-validées une par une, et forme exacte du fichier d'import — deux colonnes, pas
-d'en-tête, pas de BOM, manquants et abîmés écartés.
+validées une par une, forme exacte du fichier d'import — deux colonnes, pas
+d'en-tête, pas de BOM, manquants et abîmés écartés — répartition proposée entre
+plusieurs commandes, et décompte par client au récapitulatif.
 
 ## Limites connues
 

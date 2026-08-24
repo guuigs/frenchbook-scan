@@ -1,6 +1,7 @@
 import type { CartonSession } from "./types";
 import { formatIsbn, normalizeIsbn } from "./isbn";
 import {
+  allocationsByOrder,
   backorder,
   missingLines,
   shortfall,
@@ -10,6 +11,8 @@ import {
   totalDamaged,
   totalExpected,
   totalExtras,
+  unallocatedTotal,
+  allocatedTotal,
 } from "./order";
 
 /**
@@ -149,6 +152,8 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
     `En surplus : ${surplusLines(session).reduce((sum, line) => sum + surplus(line), 0)}`,
     `Abîmés : ${totalDamaged(session)}`,
     `Hors bon de commande : ${totalExtras(session)}`,
+    `Affectés à une commande : ${allocatedTotal(session)}`,
+    `Sans commande (stock) : ${unallocatedTotal(session)}`,
   ];
   for (const item of summary) {
     write(`• ${item}`, 10);
@@ -189,6 +194,39 @@ export async function buildPdf(session: CartonSession): Promise<Blob> {
       "normal",
       color,
     );
+  }
+
+  /*
+   * La répartition par commande est ce qui sert à préparer les colis : elle
+   * vient donc juste après le détail des lignes, avant les anomalies.
+   */
+  const tallies = allocationsByOrder(session);
+  if (tallies.length > 0) {
+    y += 12;
+    newPageIfNeeded(40);
+    write("Répartition par commande", 12, "bold");
+    for (const tally of tallies) {
+      newPageIfNeeded(16);
+      const who = tally.customer ? ` — ${tally.customer}` : "";
+      write(
+        `${tally.orderReference}${who} : ${tally.quantity} exemplaire${tally.quantity > 1 ? "s" : ""}`,
+        9,
+      );
+      for (const entry of tally.lines) {
+        newPageIfNeeded(14);
+        doc.setFont("courier", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor("#555555");
+        doc.text(`    ${formatIsbn(entry.isbn)}  ×${entry.quantity}`, margin, y);
+        y += 11;
+      }
+    }
+
+    const loose = unallocatedTotal(session);
+    if (loose > 0) {
+      newPageIfNeeded(16);
+      write(`Sans commande : ${loose} exemplaire${loose > 1 ? "s" : ""} (entrée de stock)`, 9);
+    }
   }
 
   if (session.extras.length > 0) {

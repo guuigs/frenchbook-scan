@@ -61,7 +61,7 @@ const SETTLE_MS = 900;
 export function ScanScreen() {
   const session = useCarton((state) => state.session);
   const handleScan = useCarton((state) => state.handleScan);
-  const setCount = useCarton((state) => state.setCount);
+  const confirmScan = useCarton((state) => state.confirmScan);
   const addDamaged = useCarton((state) => state.addDamaged);
   const recordExtra = useCarton((state) => state.recordExtra);
   const requestSummary = useCarton((state) => state.requestSummary);
@@ -86,18 +86,10 @@ export function ScanScreen() {
   const onCode = (code: string) => {
     const outcome = handleScan(code);
     switch (outcome.kind) {
-      case "autoConfirmed":
-        play("success");
-        setLastScan({ id: outcome.line.id, title: outcome.line.title });
-        showFlash("ok", "1/1", outcome.line.title, displayPublisher(outcome.line));
-        // Le livre validé sans feuille reste devant l'objectif le temps du
-        // geste de retrait : sans cette pause, l'appareil lit ce qu'il balaie
-        // en chemin.
-        hold(SETTLE_MS);
-        break;
-      case "needsQuantity":
-      case "alreadyComplete":
-        play("attention");
+      case "found":
+        // Deux sons distincts : un titre déjà complet qui repasse devant
+        // l'objectif est le cas qui mérite qu'on lève les yeux.
+        play(outcome.alreadyComplete ? "attention" : "success");
         setPendingLine(outcome.line);
         break;
       case "unknown":
@@ -241,17 +233,26 @@ export function ScanScreen() {
         <QuantitySheet
           line={pendingLine}
           context="scan"
-          onConfirm={(count, damaged) => {
-            setCount(pendingLine.id, count, damaged);
+          onConfirm={({ counted, damaged, allocations }) => {
+            confirmScan(pendingLine.id, counted, damaged, allocations);
             setLastScan({ id: pendingLine.id, title: pendingLine.title });
             setPendingLine(null);
             suppress(pendingLine.isbn, RESUME_MS);
             hold(SETTLE_MS);
+            /*
+             * Le voile confirme d'un coup d'œil ce qui vient d'être enregistré,
+             * commande comprise : c'est la seule trace visible de l'affectation
+             * une fois la feuille refermée.
+             */
             showFlash(
-              count === expected(pendingLine) ? "ok" : "alert",
-              `${count}/${expected(pendingLine)}`,
+              counted === expected(pendingLine) ? "ok" : "alert",
+              `${counted}/${expected(pendingLine)}`,
               pendingLine.title,
-              damaged > 0 ? `${damaged} abîmé${damaged > 1 ? "s" : ""}` : "Enregistré",
+              allocations.length === 1
+                ? allocations[0].customer || allocations[0].orderReference
+                : allocations.length > 1
+                  ? `${allocations.length} commandes`
+                  : "sans commande",
             );
           }}
           onCancel={() => {

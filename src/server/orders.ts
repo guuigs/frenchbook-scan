@@ -1,0 +1,122 @@
+import "server-only";
+
+import type { OrderMatch } from "@/lib/types";
+
+/**
+ * Lecture du référentiel de commandes, dans Supabase.
+ *
+ * Ce module ne tourne que côté serveur, et c'est structurel : la clé qu'il
+ * porte donne accès à la base, et le navigateur n'a jamais à la connaître. Il
+ * n'existe d'ailleurs aucun client Supabase dans le paquet envoyé au
+ * téléphone — l'application parle à `/api/orders`, qui parle à Supabase.
+ *
+ * Le seul appel possible est la fonction `lookup_order_lines`, à qui l'on
+ * passe un ISBN. Les tables, elles, vivent dans un schéma que l'API REST ne
+ * publie pas : même cette clé ne permet pas de les lire directement, ni d'y
+ * écrire quoi que ce soit.
+ *
+ * Pas de dépendance ajoutée non plus : PostgREST est du HTTP, `fetch` suffit,
+ * et `@supabase/supabase-js` n'apporterait ici qu'un mégaoctet de code mort.
+ */
+
+export class OrdersError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "OrdersError";
+  }
+}
+
+function config(): { url: string; key: string } {
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = process.env.SUPABASE_SECRET_KEY?.trim();
+
+  if (!url || !key) {
+    throw new OrdersError(
+      "Le référentiel de commandes n’est pas configuré sur le serveur.",
+      501,
+    );
+  }
+
+  return { url: url.replace(/\/+$/, ""), key };
+}
+
+function asText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function asCount(value: unknown): number {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) ? Math.max(Math.trunc(parsed), 0) : 0;
+}
+
+function asPrice(value: unknown): number | null {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/*
+ * La réponse est renormalisée ici plutôt que castée : une colonne renommée en
+ * base, un import qui laisse un champ vide, et un cast TypeScript ne verrait
+ * rien passer — l'écran de scan tomberait au milieu d'un carton.
+ */
+function toMatch(raw: unknown): OrderMatch {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  return {
+    orderReference: asText(record.order_reference),
+    customer: asText(record.customer),
+    title: asText(record.title),
+    unitPrice: asPrice(record.unit_price),
+    currency: asText(record.currency) || "EUR",
+    quantityOrdered: asCount(record.quantity_ordered),
+    quantityDelivered: asCount(record.quantity_delivered),
+    quantityRemaining: asCount(record.quantity_remaining),
+  };
+}
+
+export async function lookupOrders(isbn: string): Promise<OrderMatch[]> {
+  const { url, key } = config();
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/rpc/lookup_order_lines`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        // Une recherche par livre scanné : la mettre en cache côté serveur
+        // ferait travailler l'opérateur sur un référentiel périmé.
+        "Cache-Control": "no-cache",
+      },
+      body: JSON.stringify({ p_isbn: isbn }),
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new OrdersError("Le référentiel n’a pas répondu à temps.", 504);
+    }
+    throw new OrdersError("Référentiel injoignable.", 502);
+  }
+
+  if (!response.ok) {
+    const detail = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      throw new OrdersError("Clé Supabase refusée. Vérifiez SUPABASE_SECRET_KEY.", 502);
+    }
+    if (response.status === 404) {
+      throw new OrdersError(
+        "Fonction lookup_order_lines absente : le schéma SQL n’a pas été exécuté.",
+        502,
+      );
+    }
+    throw new OrdersError(`Référentiel en erreur (${response.status}) : ${detail.slice(0, 160)}`, 502);
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  return Array.isArray(payload) ? payload.map(toMatch).filter((match) => match.orderReference) : [];
+}

@@ -6,6 +6,7 @@ import { useCarton } from "@/lib/store";
 import { formatIsbn } from "@/lib/isbn";
 import { MAIL_RECIPIENT, buildExportFiles, importRows, mailCsv, shareOrDownload } from "@/lib/export";
 import {
+  allocationsByOrder,
   backorder,
   backorderedLines,
   damagedLines,
@@ -21,6 +22,7 @@ import {
   totalExtras,
   totalMissing,
   totalSurplus,
+  unallocatedTotal,
 } from "@/lib/order";
 import type { CartonSession, OrderLine } from "@/lib/types";
 import { ActionBar, Button, Dialog, Label, Note, Row } from "./ui";
@@ -39,6 +41,8 @@ export function Summary() {
   const [confirming, setConfirming] = useState(false);
 
   const conform = !hasAnomalies(session);
+  const tallies = allocationsByOrder(session);
+  const loose = unallocatedTotal(session);
   const toImport = importRows(session);
   const copiesToImport = toImport.reduce((sum, row) => sum + row.quantity, 0);
 
@@ -164,6 +168,42 @@ export function Summary() {
                   </p>
                 </li>
               ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {tallies.length > 0 || loose > 0 ? (
+          <section>
+            <Label>Répartition par commande</Label>
+            <ul className="overflow-hidden rounded-[10px] border border-border">
+              {tallies.map((tally) => (
+                <li
+                  key={tally.orderReference}
+                  className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px]">
+                      {tally.customer || "Client non renseigné"}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-[11px] text-faint" translate="no">
+                      {tally.orderReference}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[14px] font-medium tabular-nums">
+                    ×{tally.quantity}
+                  </span>
+                </li>
+              ))}
+              {loose > 0 ? (
+                <li className="flex items-center gap-3 border-b border-border bg-panel px-4 py-3 last:border-0">
+                  <span className="min-w-0 flex-1 text-[14px] text-muted">
+                    Sans commande — entrée de stock
+                  </span>
+                  <span className="shrink-0 font-mono text-[14px] font-medium tabular-nums">
+                    ×{loose}
+                  </span>
+                </li>
+              ) : null}
             </ul>
           </section>
         ) : null}

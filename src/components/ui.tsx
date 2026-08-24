@@ -209,8 +209,17 @@ export function Sheet({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" />
+      {/*
+        La couleur du texte est reposée ici, et pas seulement le fond.
+
+        Une feuille s'ouvre par-dessus l'écran qui l'appelle, dans son arbre
+        DOM : depuis le poste de scan, qui est blanc sur noir plein écran, elle
+        héritait d'un texte blanc sur son propre fond clair. Invisible en thème
+        clair, correct en sombre — le genre de panne qui ne se voit que sur
+        l'appareil de quelqu'un d'autre.
+      */}
       <div
-        className="relative flex max-h-[92dvh] flex-col rounded-t-[14px] border-t border-border bg-background"
+        className="relative flex max-h-[92dvh] flex-col rounded-t-[14px] border-t border-border bg-background text-foreground"
         style={{
           transform: drag ? `translateY(${drag}px)` : undefined,
           transition: startY.current === null ? "transform 200ms ease-out" : undefined,
@@ -273,7 +282,7 @@ export function Dialog({
         onClick={onDismiss}
         className="absolute inset-0 h-full w-full cursor-default bg-black/50"
       />
-      <div className="relative w-full max-w-sm rounded-[12px] border border-border bg-panel p-5">
+      <div className="relative w-full max-w-sm rounded-[12px] border border-border bg-panel p-5 text-foreground">
         <h2 className="text-[17px] font-semibold">{title}</h2>
         {body ? <div className="mt-1.5 text-[14px] text-muted">{body}</div> : null}
         <div className="mt-5 space-y-2">{children}</div>

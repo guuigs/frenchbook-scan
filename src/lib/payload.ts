@@ -185,6 +185,9 @@ export function migrateSession(raw: unknown): CartonSession {
     pageCount: asCount(record.pageCount),
     lines,
     extras: Array.isArray(record.extras) ? (record.extras as CartonSession["extras"]) : [],
+    allocations: Array.isArray(record.allocations)
+      ? (record.allocations as CartonSession["allocations"])
+      : [],
     notDelivered: Array.isArray(record.notDelivered)
       ? (record.notDelivered as CartonSession["notDelivered"])
       : [],

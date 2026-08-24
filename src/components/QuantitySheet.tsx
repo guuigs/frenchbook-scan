@@ -1,20 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { formatIsbn } from "@/lib/isbn";
 import { play } from "@/lib/feedback";
 import { displayPublisher, expected, isComplete } from "@/lib/order";
-import type { OrderLine } from "@/lib/types";
+import { lookupOrders } from "@/lib/orders";
+import type { OrderLine, OrderMatch } from "@/lib/types";
 import { Button, NumberPad, Note, Sheet } from "./ui";
 import { IconAlert, IconMinus, IconPlus } from "./icons";
+import { OrderPicker, proposeSplit, type Split } from "./OrderPicker";
+
+/** Ce que l'écran de validation renvoie : combien, et pour qui. */
+export interface ScanConfirmation {
+  counted: number;
+  damaged: number;
+  allocations: Array<{ orderReference: string; customer: string; quantity: number }>;
+}
 
 /**
- * Confirmation de quantité pour un titre attendu en plusieurs exemplaires.
+ * Validation d'un livre scanné.
  *
- * La quantité attendue est proposée en grand et validable d'un seul geste :
- * c'est le cas courant. Corriger demande un geste de plus, volontairement, car
- * c'est une décision qui apparaîtra au récapitulatif.
+ * Un exemplaire compté est désormais un exemplaire affecté : l'écran s'ouvre à
+ * chaque livre, y compris ceux attendus en un seul exemplaire, et attend un
+ * geste. C'est un ralentissement voulu — la seule question qu'il pose, à quelle
+ * commande ce livre appartient, ne peut se répondre que le livre en main.
+ *
+ * La quantité attendue et la répartition proposée sont pré-remplies : dans le
+ * cas courant — un titre, une commande — il ne reste qu'à confirmer.
  */
 export function QuantitySheet({
   line,
@@ -24,7 +37,7 @@ export function QuantitySheet({
 }: {
   line: OrderLine;
   context: "scan" | "correction";
-  onConfirm: (counted: number, damaged: number) => void;
+  onConfirm: (confirmation: ScanConfirmation) => void;
   onCancel: () => void;
 }) {
   const target = expected(line);
@@ -35,8 +48,70 @@ export function QuantitySheet({
   const [damaged, setDamaged] = useState(line.damaged);
   const [padOpen, setPadOpen] = useState(false);
 
+  const [matches, setMatches] = useState<OrderMatch[]>([]);
+  const [split, setSplit] = useState<Split>({});
+  const [loading, setLoading] = useState(true);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+
+  const search = useCallback(() => {
+    let active = true;
+    setLoading(true);
+    setLookupError(null);
+
+    void lookupOrders(line.isbn)
+      .then((found) => {
+        if (!active) return;
+        setMatches(found);
+        setSplit(proposeSplit(found, count));
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setMatches([]);
+        setLookupError(error instanceof Error ? error.message : "Recherche impossible.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+    // La recherche ne dépend que du livre : la quantité initiale sert à la
+    // proposition de départ, la relancer à chaque incrément rappellerait le
+    // serveur pour rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.isbn]);
+
+  useEffect(search, [search]);
+
+  /*
+   * La répartition suit la quantité tant que l'opérateur n'y a pas touché :
+   * monter le compteur de 1 à 2 doit servir un second exemplaire, pas laisser
+   * une ligne à moitié affectée. Dès qu'il a réparti à la main, on ne touche
+   * plus à son choix.
+   */
+  useEffect(() => {
+    if (!touched && !loading) setSplit(proposeSplit(matches, count));
+  }, [count, matches, touched, loading]);
+
   const gap = count - target;
   const colour = gap === 0 ? "text-success" : "text-danger";
+
+  const confirm = () => {
+    play("success");
+    onConfirm({
+      counted: count,
+      damaged,
+      allocations: matches
+        .map((match) => ({
+          orderReference: match.orderReference,
+          customer: match.customer,
+          quantity: split[match.orderReference] ?? 0,
+        }))
+        .filter((entry) => entry.quantity > 0),
+    });
+  };
 
   return (
     <Sheet
@@ -53,12 +128,7 @@ export function QuantitySheet({
       }
       footer={
         <div className="space-y-2 pb-3">
-          <Button
-            onClick={() => {
-              play("success");
-              onConfirm(count, damaged);
-            }}
-          >
+          <Button onClick={confirm}>
             {gap === 0 && count > 1 ? `Les ${count} sont là` : `Valider ${count}`}
           </Button>
           <div className="grid grid-cols-2 gap-2">
@@ -109,6 +179,20 @@ export function QuantitySheet({
         ) : null}
 
         {padOpen ? <NumberPad value={count} onChange={setCount} /> : null}
+
+        <OrderPicker
+          isbn={line.isbn}
+          counted={count}
+          matches={matches}
+          split={split}
+          loading={loading}
+          error={lookupError}
+          onChange={(next) => {
+            setTouched(true);
+            setSplit(next);
+          }}
+          onRetry={search}
+        />
 
         {/*
           Le filet passe au rouge dès qu'un exemplaire est signalé : la ligne

@@ -33,14 +33,17 @@ export interface OcrProgress {
   stage: string;
 }
 
-/** Résultat d'un code lu, qui pilote ce que l'écran de scan affiche. */
+/**
+ * Résultat d'un code lu, qui pilote ce que l'écran de scan affiche.
+ *
+ * Il n'y a plus de validation d'office. Un exemplaire compté est désormais un
+ * exemplaire affecté à une commande client : personne d'autre que l'opérateur,
+ * le livre en main, ne peut décider laquelle. L'écran s'ouvre donc à chaque
+ * livre, y compris sur une ligne attendue en un seul exemplaire.
+ */
 export type ScanOutcome =
-  /** Quantité attendue de 1 : validé d'office, confirmation flash. */
-  | { kind: "autoConfirmed"; line: OrderLine }
-  /** Quantité attendue > 1 : demande de confirmation à l'opérateur. */
-  | { kind: "needsQuantity"; line: OrderLine }
-  /** Ligne déjà complète : nouveau scan = surplus à arbitrer. */
-  | { kind: "alreadyComplete"; line: OrderLine }
+  /** Le code figure au bon : l'écran de validation s'ouvre. */
+  | { kind: "found"; line: OrderLine; alreadyComplete: boolean }
   /** Code absent du bon de commande. */
   | { kind: "unknown"; code: string };
 
@@ -63,7 +66,12 @@ interface CartonState {
   validateOrder: () => void;
 
   handleScan: (code: string) => ScanOutcome;
-  setCount: (id: string, counted: number, damaged: number) => void;
+  confirmScan: (
+    id: string,
+    counted: number,
+    damaged: number,
+    allocations: ReadonlyArray<{ orderReference: string; customer: string; quantity: number }>,
+  ) => void;
   addDamaged: (id: string) => number;
   recordExtra: (isbn: string) => void;
   removeExtra: (id: string) => void;
@@ -374,32 +382,53 @@ export const useCarton = create<CartonState>()(
         }
 
         const line = state.session.lines[index];
-
-        if (isComplete(line)) {
-          return { kind: "alreadyComplete", line };
-        }
-
-        if (expected(line) === 1) {
-          const lines = [...state.session.lines];
-          lines[index] = { ...line, counted: 1 };
-          setState({ session: { ...state.session, lines } });
-          return { kind: "autoConfirmed", line: lines[index] };
-        }
-
-        return { kind: "needsQuantity", line };
+        return { kind: "found", line, alreadyComplete: isComplete(line) };
       },
 
-      setCount: (id, counted, damaged) =>
-        setState((state) => ({
-          session: {
-            ...state.session,
-            lines: state.session.lines.map((line) =>
-              line.id === id
-                ? { ...line, counted: Math.max(counted, 0), damaged: Math.max(damaged, 0) }
-                : line,
-            ),
-          },
-        })),
+      /**
+       * Valide un livre scanné : ce qui est compté, et pour qui.
+       *
+       * Les affectations de cet ISBN sont remplacées, jamais cumulées. L'écran
+       * de validation montre la répartition entière du titre : rouvrir la même
+       * ligne pour se corriger doit donc écraser ce qui y était, sinon une
+       * correction ajouterait des exemplaires au lieu d'en déplacer.
+       */
+      confirmScan: (id, counted, damaged, allocations) =>
+        setState((state) => {
+          const line = state.session.lines.find((entry) => entry.id === id);
+          if (!line) return {};
+
+          const key = normalizeIsbn(line.isbn);
+
+          return {
+            session: {
+              ...state.session,
+              lines: state.session.lines.map((entry) =>
+                entry.id === id
+                  ? {
+                      ...entry,
+                      counted: Math.max(counted, 0),
+                      damaged: Math.max(damaged, 0),
+                    }
+                  : entry,
+              ),
+              allocations: [
+                ...state.session.allocations.filter(
+                  (entry) => normalizeIsbn(entry.isbn) !== key,
+                ),
+                ...allocations
+                  .filter((entry) => entry.quantity > 0 && entry.orderReference)
+                  .map((entry) => ({
+                    id: crypto.randomUUID(),
+                    isbn: key,
+                    orderReference: entry.orderReference,
+                    customer: entry.customer,
+                    quantity: Math.max(Math.trunc(entry.quantity), 0),
+                  })),
+              ],
+            },
+          };
+        }),
 
       /**
        * Signale un exemplaire abîmé de plus sur une ligne, sans toucher au
@@ -493,7 +522,7 @@ export const useCarton = create<CartonState>()(
        * manquants — et l'opérateur perdrait son comptage en cours sur une
        * erreur incompréhensible.
        */
-      version: 4,
+      version: 5,
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {

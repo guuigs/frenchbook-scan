@@ -4,7 +4,16 @@
  */
 type IconProps = { className?: string };
 
-function Svg({ children, className = "h-4 w-4" }: IconProps & { children: React.ReactNode }) {
+function Svg({ children, className = "" }: IconProps & { children: React.ReactNode }) {
+  /*
+   * La taille par défaut ne doit pas disparaître quand l'appelant ne passe
+   * qu'une couleur. Elle vivait dans la valeur par défaut du paramètre, donc
+   * `<IconAlert className="text-danger" />` la remplaçait : l'icône prenait
+   * alors la taille de la police du parent — un triangle d'alerte de cent
+   * pixels au milieu d'une feuille de validation.
+   */
+  const size = /(^|\s)[hw]-/.test(className) ? "" : "h-4 w-4";
+
   return (
     <svg
       viewBox="0 0 16 16"
@@ -14,7 +23,7 @@ function Svg({ children, className = "h-4 w-4" }: IconProps & { children: React.
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={className}
+      className={`${size} ${className}`.trim()}
     >
       {children}
     </svg>

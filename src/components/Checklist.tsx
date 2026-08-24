@@ -18,7 +18,7 @@ import { QuantitySheet } from "./QuantitySheet";
  */
 export function Checklist({ onClose }: { onClose: () => void }) {
   const session = useCarton((state) => state.session);
-  const setCount = useCarton((state) => state.setCount);
+  const confirmScan = useCarton((state) => state.confirmScan);
   const removeExtra = useCarton((state) => state.removeExtra);
 
   const [search, setSearch] = useState("");
@@ -47,8 +47,8 @@ export function Checklist({ onClose }: { onClose: () => void }) {
       <QuantitySheet
         line={editing}
         context="correction"
-        onConfirm={(counted, damaged) => {
-          setCount(editing.id, counted, damaged);
+        onConfirm={({ counted, damaged, allocations }) => {
+          confirmScan(editing.id, counted, damaged, allocations);
           setEditing(null);
         }}
         onCancel={() => setEditing(null)}

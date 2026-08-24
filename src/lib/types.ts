@@ -109,6 +109,40 @@ export interface NotDeliveredItem {
   reason: string;
 }
 
+/**
+ * Une ligne de commande client trouvée dans le référentiel, pour un ISBN.
+ *
+ * C'est une lecture, jamais une écriture : le référentiel est alimenté par
+ * l'export de commandes, l'application ne fait que le consulter.
+ */
+export interface OrderMatch {
+  orderReference: string;
+  customer: string;
+  title: string;
+  unitPrice: number | null;
+  currency: string;
+  quantityOrdered: number;
+  quantityDelivered: number;
+  /** Ce qu'il reste à servir sur cette commande, d'après le référentiel. */
+  quantityRemaining: number;
+}
+
+/**
+ * Un exemplaire physique du carton, affecté à une commande.
+ *
+ * L'affectation est décidée par l'opérateur au moment du scan et vit dans la
+ * session, pas dans la base : un carton en cours n'a pas à laisser de trace
+ * dans le référentiel tant qu'il n'est pas clôturé, et la reprise après
+ * fermeture de l'onglet doit retrouver l'état exact du comptage.
+ */
+export interface Allocation {
+  id: string;
+  isbn: string;
+  orderReference: string;
+  customer: string;
+  quantity: number;
+}
+
 /** L'unité de travail : un carton, son bon de commande et son comptage. */
 export interface CartonSession {
   id: string;
@@ -119,6 +153,8 @@ export interface CartonSession {
   lines: OrderLine[];
   extras: ExtraItem[];
   notDelivered: NotDeliveredItem[];
+  /** Répartition des exemplaires comptés entre les commandes clients. */
+  allocations: Allocation[];
   /**
    * Totaux imprimés sur le bordereau, relevés à titre de référence.
    *
@@ -180,6 +216,7 @@ export function emptySession(): CartonSession {
     lines: [],
     extras: [],
     notDelivered: [],
+    allocations: [],
     declaredTotalQuantity: 0,
     declaredTotalArticles: 0,
   };

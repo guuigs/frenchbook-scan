@@ -1,4 +1,4 @@
-import type { CartonSession, FieldIssue, OrderLine } from "./types";
+import type { Allocation, CartonSession, FieldIssue, OrderLine } from "./types";
 import { normalizeIsbn } from "./isbn";
 import { isBlocking } from "./reconciler";
 
@@ -222,6 +222,58 @@ export function variantGroups(session: CartonSession): VariantGroup[] {
   }
 
   return Array.from(groups.values());
+}
+
+/** Les exemplaires de ce titre déjà affectés à une commande. */
+export function allocationsFor(session: CartonSession, isbn: string): Allocation[] {
+  const key = normalizeIsbn(isbn);
+  return session.allocations.filter((entry) => normalizeIsbn(entry.isbn) === key);
+}
+
+export function allocatedTotal(session: CartonSession): number {
+  return session.allocations.reduce((sum, entry) => sum + entry.quantity, 0);
+}
+
+/**
+ * Ce qui a été compté sans être rattaché à une commande.
+ *
+ * Un réassort, un achat sur stock : c'est un cas légitime, pas une anomalie.
+ * Le nombre figure au récapitulatif pour que rien ne disparaisse en silence.
+ */
+export function unallocatedTotal(session: CartonSession): number {
+  return Math.max(totalCounted(session) - allocatedTotal(session), 0);
+}
+
+export interface OrderTally {
+  orderReference: string;
+  customer: string;
+  quantity: number;
+  lines: Allocation[];
+}
+
+/** Le carton vu par commande client, pour le récapitulatif de fin. */
+export function allocationsByOrder(session: CartonSession): OrderTally[] {
+  const tallies = new Map<string, OrderTally>();
+
+  for (const entry of session.allocations) {
+    const tally = tallies.get(entry.orderReference);
+    if (tally) {
+      tally.quantity += entry.quantity;
+      tally.customer = tally.customer || entry.customer;
+      tally.lines.push(entry);
+    } else {
+      tallies.set(entry.orderReference, {
+        orderReference: entry.orderReference,
+        customer: entry.customer,
+        quantity: entry.quantity,
+        lines: [entry],
+      });
+    }
+  }
+
+  return Array.from(tallies.values()).sort((left, right) =>
+    left.orderReference.localeCompare(right.orderReference),
+  );
 }
 
 export function sessionTitle(session: CartonSession): string {
