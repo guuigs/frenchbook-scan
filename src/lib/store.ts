@@ -75,6 +75,7 @@ interface CartonState {
       customer: string;
       quantity: number;
       discountPercent: number | null;
+      unitPrice: number | null;
     }>,
   ) => void;
   addDamaged: (id: string) => number;
@@ -430,6 +431,7 @@ export const useCarton = create<CartonState>()(
                     customer: entry.customer,
                     quantity: Math.max(Math.trunc(entry.quantity), 0),
                     discountPercent: entry.discountPercent,
+                    unitPrice: entry.unitPrice,
                   })),
               ],
             },

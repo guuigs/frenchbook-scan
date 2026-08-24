@@ -169,6 +169,8 @@ export interface Allocation {
   quantity: number;
   /** Remise fournisseur reprise du référentiel, pour l'export de réception. */
   discountPercent: number | null;
+  /** Prix d'achat HT repris du référentiel, pour l'export de réception. */
+  unitPrice: number | null;
 }
 
 /** L'unité de travail : un carton, son bon de commande et son comptage. */

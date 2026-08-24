@@ -51,6 +51,12 @@ export interface ImportRow {
    * commandes journalières, notamment), ou que le référentiel ne la porte pas.
    */
   discountPercent: number | null;
+  /**
+   * Prix d'achat HT en euros, repris du référentiel de commandes. Même
+   * réserve que `discountPercent` : à vérifier que Librisoft lit cette
+   * colonne plutôt que de rejeter la ligne ou de l'ignorer.
+   */
+  unitPrice: number | null;
 }
 
 /**
@@ -87,7 +93,12 @@ export function importRows(session: CartonSession): ImportRow[] {
     const quantity = line.counted - line.damaged;
     if (quantity <= 0) continue;
 
-    rows.push({ isbn, quantity, discountPercent: discountForIsbn(session, isbn) });
+    rows.push({
+      isbn,
+      quantity,
+      discountPercent: discountForIsbn(session, isbn),
+      unitPrice: priceForIsbn(session, isbn),
+    });
   }
 
   return rows;
@@ -114,18 +125,32 @@ function discountForIsbn(session: CartonSession, isbn: string): number | null {
   return quantity > 0 ? Math.round((weighted / quantity) * 100) / 100 : null;
 }
 
+/** Prix d'achat HT à reporter pour un ISBN. Même principe que `discountForIsbn`. */
+function priceForIsbn(session: CartonSession, isbn: string): number | null {
+  const entries = session.allocations.filter(
+    (entry) => normalizeIsbn(entry.isbn) === isbn && entry.unitPrice !== null,
+  );
+  if (entries.length === 0) return null;
+
+  const weighted = entries.reduce((sum, entry) => sum + entry.unitPrice! * entry.quantity, 0);
+  const quantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+  return quantity > 0 ? Math.round((weighted / quantity) * 100) / 100 : null;
+}
+
 /**
- * Liste d'import Librisoft : le code ISBN, la quantité, et la remise.
+ * Liste d'import Librisoft : le code ISBN, la quantité, la remise, et le prix
+ * d'achat HT.
  *
  * La liste mémorisée de Librisoft se chargeait jusqu'ici depuis un fichier
  * texte ou CSV à deux colonnes — « le code ISBN des articles puis la
  * quantité » — et rien de plus ; c'est le seul format dont on avait la preuve
- * qu'il était lu. Cette troisième colonne, la remise fournisseur, est une
- * tentative : à vérifier à l'usage que Librisoft la lit bien plutôt que de
- * rejeter la ligne entière ou de l'ignorer silencieusement.
+ * qu'il était lu. Ces deux colonnes en plus, remise et prix d'achat, sont une
+ * tentative : à vérifier à l'usage que Librisoft les lit bien plutôt que de
+ * rejeter la ligne entière ou de les ignorer silencieusement.
  *
- * Une remise inconnue laisse la colonne vide plutôt que d'écrire un zéro, qui
- * se lirait comme une remise nulle plutôt que comme une absence d'information.
+ * Une valeur inconnue laisse la colonne vide plutôt que d'écrire un zéro, qui
+ * se lirait comme une remise ou un prix nul plutôt que comme une absence
+ * d'information.
  *
  * Les choix de forme visent le lecteur le plus strict possible, comme pour les
  * deux colonnes d'origine :
@@ -140,7 +165,10 @@ function discountForIsbn(session: CartonSession, isbn: string): number | null {
  */
 export function buildCsv(session: CartonSession): Blob {
   const rows = importRows(session).map(
-    (row) => `${row.isbn};${row.quantity};${row.discountPercent !== null ? row.discountPercent.toFixed(2) : ""}`,
+    (row) =>
+      `${row.isbn};${row.quantity};${row.discountPercent !== null ? row.discountPercent.toFixed(2) : ""};${
+        row.unitPrice !== null ? row.unitPrice.toFixed(2) : ""
+      }`,
   );
   const content = rows.length > 0 ? `${rows.join("\r\n")}\r\n` : "";
   return new Blob([content], { type: "text/csv;charset=utf-8" });

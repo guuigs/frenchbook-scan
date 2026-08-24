@@ -43,7 +43,15 @@ export function Confirmation({
         // rangé d'office dans les commandes journalières sur la foi d'une panne.
         error
         ? []
-        : [{ orderReference: DAILY_ORDERS, customer: "", quantity: 1, discountPercent: null }]
+        : [
+            {
+              orderReference: DAILY_ORDERS,
+              customer: "",
+              quantity: 1,
+              discountPercent: null,
+              unitPrice: null,
+            },
+          ]
       : Object.entries(proposeSplit(matches, 1))
           .filter(([, quantity]) => quantity > 0)
           .map(([orderReference, quantity]) => {
@@ -53,6 +61,7 @@ export function Confirmation({
               customer: match?.customer ?? "",
               quantity,
               discountPercent: match?.discountPercent ?? null,
+              unitPrice: match?.unitPrice ?? null,
             };
           });
 

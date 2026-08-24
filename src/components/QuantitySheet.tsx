@@ -20,6 +20,7 @@ export interface ScanConfirmation {
     customer: string;
     quantity: number;
     discountPercent: number | null;
+    unitPrice: number | null;
   }>;
 }
 
@@ -79,13 +80,22 @@ export function QuantitySheet({
       // sans rien demander — il n'y a pas de choix à faire.
       allocations:
         matches.length === 0 && !lookupError && count > 0
-          ? [{ orderReference: DAILY_ORDERS, customer: "", quantity: count, discountPercent: null }]
+          ? [
+              {
+                orderReference: DAILY_ORDERS,
+                customer: "",
+                quantity: count,
+                discountPercent: null,
+                unitPrice: null,
+              },
+            ]
           : matches
               .map((match) => ({
                 orderReference: match.orderReference,
                 customer: match.customer,
                 quantity: split[match.orderReference] ?? 0,
                 discountPercent: match.discountPercent,
+                unitPrice: match.unitPrice,
               }))
               .filter((entry) => entry.quantity > 0),
     });
