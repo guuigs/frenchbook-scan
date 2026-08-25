@@ -25,7 +25,7 @@ ENTETE = ['Code', 'P.O', 'Titre', 'Auteur', 'Editeur', 'cdé', 'rsvé', 'Répons
 # Les colonnes de `catalog.order_lines`, dans l'ordre où le CSV les portera.
 COLONNES = ['order_reference', 'customer', 'isbn', 'title', 'author', 'publisher',
             'supplier_response', 'shipping_date', 'reserved', 'unit_price',
-            'quantity_ordered', 'quantity_pending']
+            'discount_rate', 'quantity_ordered', 'quantity_pending']
 
 
 def texte(valeur):
@@ -45,6 +45,25 @@ def prix(valeur):
     except ValueError:
         return None
     return None if math.isnan(montant) or montant < 0 else round(montant, 2)
+
+
+def taux(valeur):
+    """« 18,00 % » → 18.00. C'est le pourcentage brut qui est retenu, pas le
+    montant en euros de la colonne « Remise » voisine : le taux est la valeur
+    canonique, le montant s'en déduit et arrive bruité par le tableur
+    (67.275002 pour 67,28 €).
+
+    Le taux est propre à la ligne, pas à la commande : une même commande
+    mélange couramment plusieurs taux, vraisemblablement un par éditeur.
+    """
+    brut = texte(valeur).replace("%", "").replace("\xa0", "").replace(" ", "").replace(",", ".")
+    try:
+        pourcentage = float(brut)
+    except ValueError:
+        return None
+    if math.isnan(pourcentage) or not 0 <= pourcentage <= 100:
+        return None
+    return round(pourcentage, 2)
 
 
 def date(valeur):
@@ -111,6 +130,7 @@ def lire(chemin, correspondance):
             date(champs["Date expédition"]),
             reserve,
             prix(champs["Unité TTC"]),
+            taux(champs["Remise %"]),
             commande,
             # Rien à pointer sur une ligne réservée : le reste est explicitement
             # nul, et c'est cette valeur que la base retient pour le calcul.
@@ -129,12 +149,13 @@ def main(dossier, sortie, correspondance_csv):
         for chemin in sorted(glob.glob(f"{dossier}/*.xlsx")):
             lignes = lire(chemin, correspondance)
             for (ref, customer, isbn, titre, auteur, editeur, reponse,
-                 expedition, reserve, montant, commande, reste) in lignes:
+                 expedition, reserve, montant, remise, commande, reste) in lignes:
                 ecrivain.writerow([
                     ref, customer, isbn, titre, auteur, editeur, reponse,
                     expedition or "",
                     "true" if reserve else "false",
                     "" if montant is None else f"{montant:.2f}",
+                    "" if remise is None else f"{remise:.2f}",
                     commande, reste,
                 ])
             total += len(lignes)

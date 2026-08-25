@@ -70,12 +70,28 @@ Colonnes produites, qui sont exactement celles de la table :
 | `shipping_date` | `Date expédition` | converti en ISO |
 | `reserved` | `rsvé` | **1 → rien à pointer** |
 | `unit_price` | `Unité TTC` | « 24,00 € » → `24.00` |
+| `discount_rate` | `Remise %` | « 18,00 % » → `18.00`, le pourcentage brut |
 | `quantity_ordered` | `cdé` | |
 | `quantity_pending` | déduit | `0` si réservé, la quantité commandée sinon |
 
 Le convertisseur écarte les en-têtes répétés par la pagination, les lignes sans
 ISBN valide, et les doublons internes à une commande — que la contrainte
 d'unicité refuserait de toute façon.
+
+**La remise est portée par la ligne, pas par la commande.** C'est contre-intuitif
+si l'on pense « remise du client » : sur les 58 commandes importées, 46 mélangent
+plusieurs taux, et une seule d'entre elles peut en aligner six (10, 13, 15, 17,
+18, 20 %). Le taux suit vraisemblablement l'éditeur, sans que ce soit une règle
+fiable non plus — 59 éditeurs portent eux-mêmes plusieurs taux selon la commande.
+Il n'y a donc pas de « taux de la commande » à afficher : seule la ligne fait foi.
+
+C'est le pourcentage qui est retenu, pas le montant en euros de la colonne
+`Remise` voisine : le taux est la valeur canonique, le montant s'en déduit et
+arrive bruité par le tableur (`67.275002` pour 67,28 €).
+
+La colonne est **nullable, et le reste** : les commandes importées avant son
+existence n'ont pas de source d'où la tirer. Un `0` mentirait — « 0 % de remise »
+et « remise inconnue » ne sont pas la même chose.
 
 Ne **pas** ajouter de colonne `quantity_remaining` : elle est calculée par la
 base. Deux colonnes qui se contredisent finiraient par diverger, et l'écran de

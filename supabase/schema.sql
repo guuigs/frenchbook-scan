@@ -71,6 +71,15 @@ create table if not exists catalog.order_lines (
   unit_price         numeric(10, 2) check (unit_price >= 0),
   currency           text        not null default 'EUR',
 
+  -- Taux de remise en pourcentage brut : « 18,00 % » dans l'export devient
+  -- 18.00. Il est porté par la ligne et non par la commande — une même commande
+  -- mélange couramment plusieurs taux, vraisemblablement un par éditeur.
+  --
+  -- Nullable, et c'est délibéré : les commandes importées avant que cette
+  -- colonne existe n'ont pas de source d'où la tirer, et un 0 mentirait —
+  -- « 0 % de remise » et « remise inconnue » ne sont pas la même chose.
+  discount_rate      numeric(5, 2) check (discount_rate >= 0 and discount_rate <= 100),
+
   quantity_ordered   integer     not null default 0 check (quantity_ordered   >= 0),
   quantity_delivered integer     not null default 0 check (quantity_delivered >= 0),
 
@@ -94,6 +103,22 @@ create table if not exists catalog.order_lines (
   -- (`on conflict … do update`) plutôt qu'en accumulant des doublons.
   constraint order_lines_unique_line unique (order_reference, isbn)
 );
+
+-- Colonnes ajoutées après coup. Le `create table` ci-dessus ne s'applique qu'à
+-- une base vierge : sans ce rattrapage, relancer ce script sur une base déjà
+-- en service laisserait le schéma en arrière, ce qui est exactement le cas que
+-- l'idempotence est censée couvrir.
+alter table catalog.order_lines
+  add column if not exists discount_rate numeric(5, 2);
+
+do $$
+begin
+  alter table catalog.order_lines
+    add constraint order_lines_discount_rate_check
+    check (discount_rate >= 0 and discount_rate <= 100);
+exception
+  when duplicate_object then null;
+end $$;
 
 -- La seule recherche que fait l'application.
 create index if not exists order_lines_isbn_idx on catalog.order_lines (isbn);
