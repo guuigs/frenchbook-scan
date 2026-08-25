@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
+import { ViewportLock } from "@/components/ViewportLock";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,6 +15,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // L'interface reste calée sur la largeur de l'écran : un pincement
+  // involontaire — fréquent quand on tient le téléphone d'une main et un livre
+  // de l'autre — laissait l'application de travers pour le reste du carton.
+  // Safari ignore ces deux réglages dans l'onglet ; `ViewportLock` s'en charge.
+  maximumScale: 1,
+  userScalable: false,
   // La barre d'état doit se fondre dans la page, dans les deux thèmes.
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
@@ -24,7 +31,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="min-h-dvh font-sans antialiased">{children}</body>
+      <body className="min-h-dvh font-sans antialiased">
+        <ViewportLock />
+        {children}
+      </body>
     </html>
   );
 }

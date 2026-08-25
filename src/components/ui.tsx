@@ -65,7 +65,13 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   return (
     <input
       {...props}
-      className={`min-h-12 w-full rounded-[8px] border border-border bg-panel px-3 text-[15px] text-foreground placeholder:text-faint focus:border-border-strong ${className}`}
+      /*
+       * 16 px et pas moins : en dessous, iOS zoome de lui-même à la mise au
+       * point du champ, et l'interface reste agrandie une fois le clavier
+       * refermé. La taille est donc un réglage de comportement ici, pas
+       * seulement de lisibilité.
+       */
+      className={`min-h-12 w-full rounded-[8px] border border-border bg-panel px-3 text-[16px] text-foreground placeholder:text-faint focus:border-border-strong ${className}`}
     />
   );
 }

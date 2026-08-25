@@ -84,8 +84,9 @@ body {
 
 body {
   -webkit-tap-highlight-color: transparent;
-  /* Supprime le délai de 300 ms hérité du double-tap sans désactiver le zoom :
-     l'opérateur doit pouvoir agrandir une photo de bon de commande. */
+  /* Supprime le délai de 300 ms hérité du double-tap, et le zoom qui allait
+     avec. Agrandir une photo de bon reste possible : elle a son propre écran
+     plein format (`LineEditor`), qui ne dépend pas du zoom du navigateur. */
   touch-action: manipulation;
 }
 
