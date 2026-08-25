@@ -41,35 +41,19 @@ function fileStem(session: CartonSession): string {
   return `reception_${reference.replace(/[^A-Za-z0-9_-]/g, "-")}_${stamp}`;
 }
 
-/** Une ligne prête à entrer en stock : le code, le nombre d'exemplaires sains, et sa remise. */
+/**
+ * Une ligne prête à entrer en stock : le code, et le nombre d'exemplaires
+ * sains.
+ *
+ * Volontairement limité aux deux colonnes que Librisoft lit de façon
+ * confirmée. Le référentiel de commandes porte aussi une remise et un prix
+ * d'achat par ISBN, mais les faire figurer ici reste un essai non concluant —
+ * le format envoyé par mail au service commercial doit rester
+ * `isbn;quantité`.
+ */
 export interface ImportRow {
   isbn: string;
   quantity: number;
-  /**
-   * Remise fournisseur en points de pourcentage, reprise du référentiel de
-   * commandes. Vide quand le titre n'a été rattaché à aucune commande (les
-   * commandes journalières, notamment), ou que le référentiel ne la porte pas.
-   */
-  discountPercent: number | null;
-  /**
-   * Prix d'achat HT en euros, repris du référentiel de commandes. Même
-   * réserve que `discountPercent` : à vérifier que Librisoft lit cette
-   * colonne plutôt que de rejeter la ligne ou de l'ignorer.
-   */
-  unitPrice: number | null;
-  /**
-   * Titre et fournisseur du bon, ajoutés en toutes lettres.
-   *
-   * Librisoft les retrouve normalement seul depuis sa fiche article une fois
-   * l'EAN reconnu — mais le prix de vente, la catégorie et les seuils de
-   * réassort n'ont, eux, aucune source ici : ni le bon de livraison ni le
-   * référentiel de commandes ne les portent. Pas question d'écrire une valeur
-   * inventée à leur place, qui écraserait une fiche article correcte. Titre et
-   * fournisseur, en revanche, sont réellement connus : ajoutés à toutes fins
-   * utiles pendant qu'on vérifie si Librisoft les lit.
-   */
-  title: string;
-  supplier: string;
 }
 
 /**
@@ -106,88 +90,24 @@ export function importRows(session: CartonSession): ImportRow[] {
     const quantity = line.counted - line.damaged;
     if (quantity <= 0) continue;
 
-    rows.push({
-      isbn,
-      quantity,
-      discountPercent: discountForIsbn(session, isbn),
-      unitPrice: priceForIsbn(session, isbn),
-      title: line.title,
-      supplier: session.supplier,
-    });
+    rows.push({ isbn, quantity });
   }
 
   return rows;
 }
 
 /**
- * Remise à reporter pour un ISBN, à partir des commandes auxquelles ses
- * exemplaires ont été affectés.
+ * Liste d'import Librisoft : le code ISBN, puis la quantité.
  *
- * Un même titre peut se répartir entre plusieurs commandes portant des
- * remises différentes ; la moyenne pondérée par la quantité de chacune reste
- * la meilleure valeur unique à défaut de pouvoir en importer une par
- * commande. `null` si aucune affectation ne porte de remise — les commandes
- * journalières, notamment, n'en ont pas.
- */
-function discountForIsbn(session: CartonSession, isbn: string): number | null {
-  const entries = session.allocations.filter(
-    (entry) => normalizeIsbn(entry.isbn) === isbn && entry.discountPercent !== null,
-  );
-  if (entries.length === 0) return null;
-
-  const weighted = entries.reduce((sum, entry) => sum + entry.discountPercent! * entry.quantity, 0);
-  const quantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
-  return quantity > 0 ? Math.round((weighted / quantity) * 100) / 100 : null;
-}
-
-/** Prix d'achat HT à reporter pour un ISBN. Même principe que `discountForIsbn`. */
-function priceForIsbn(session: CartonSession, isbn: string): number | null {
-  const entries = session.allocations.filter(
-    (entry) => normalizeIsbn(entry.isbn) === isbn && entry.unitPrice !== null,
-  );
-  if (entries.length === 0) return null;
-
-  const weighted = entries.reduce((sum, entry) => sum + entry.unitPrice! * entry.quantity, 0);
-  const quantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
-  return quantity > 0 ? Math.round((weighted / quantity) * 100) / 100 : null;
-}
-
-/**
- * Un champ texte peut porter le séparateur lui-même (un titre avec un
- * point-virgule serait rarissime, mais un titre avec un accent ou une virgule
- * ne l'est pas) : il est entouré de guillemets dès qu'il contient le
- * séparateur, un guillemet ou un retour à la ligne, guillemet interne doublé —
- * la règle CSV minimale, pour ne pas casser l'alignement des colonnes qui
- * suivent.
- */
-function csvField(value: string): string {
-  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
-/**
- * Liste d'import Librisoft : le code ISBN, la quantité, la remise, le prix
- * d'achat HT, le titre et le fournisseur.
+ * La liste mémorisée de Librisoft se charge depuis un fichier texte ou CSV à
+ * deux colonnes — « le code ISBN des articles puis la quantité » — et rien de
+ * plus ; c'est le seul format dont on ait la preuve qu'il est lu. Des essais
+ * avec des colonnes en plus (remise, prix, titre, fournisseur) n'ont pas
+ * confirmé que Librisoft les lit plutôt que de rejeter la ligne ou de les
+ * ignorer silencieusement — le format envoyé par mail au service commercial
+ * en reste donc à ces deux colonnes.
  *
- * La liste mémorisée de Librisoft se chargeait jusqu'ici depuis un fichier
- * texte ou CSV à deux colonnes — « le code ISBN des articles puis la
- * quantité » — et rien de plus ; c'est le seul format dont on avait la preuve
- * qu'il était lu. Ces colonnes en plus sont une tentative : à vérifier à
- * l'usage que Librisoft les lit bien plutôt que de rejeter la ligne entière ou
- * de les ignorer silencieusement.
- *
- * Prix de vente, catégorie et seuils de réassort n'y figurent volontairement
- * pas : rien dans le bon de livraison ni dans le référentiel de commandes ne
- * les porte, et écrire une valeur inventée écraserait une fiche article
- * correcte plutôt que de la compléter. Titre et fournisseur, en revanche, sont
- * réellement connus — Librisoft les retrouve normalement seul depuis sa fiche
- * article une fois l'EAN reconnu, mais ça ne coûte rien de les fournir aussi.
- *
- * Une valeur numérique inconnue laisse la colonne vide plutôt que d'écrire un
- * zéro, qui se lirait comme une remise ou un prix nul plutôt que comme une
- * absence d'information.
- *
- * Les choix de forme visent le lecteur le plus strict possible, comme pour les
- * deux colonnes d'origine :
+ * Les choix de forme visent le lecteur le plus strict possible :
  *
  * — pas de ligne d'en-tête : elle serait lue comme un article, et « ISBN » ne
  *   ressemble à aucun code ;
@@ -198,16 +118,7 @@ function csvField(value: string): string {
  *   chiffre du premier ISBN.
  */
 export function buildCsv(session: CartonSession): Blob {
-  const rows = importRows(session).map((row) =>
-    [
-      row.isbn,
-      String(row.quantity),
-      row.discountPercent !== null ? row.discountPercent.toFixed(2) : "",
-      row.unitPrice !== null ? row.unitPrice.toFixed(2) : "",
-      csvField(row.title),
-      csvField(row.supplier),
-    ].join(";"),
-  );
+  const rows = importRows(session).map((row) => `${row.isbn};${row.quantity}`);
   const content = rows.length > 0 ? `${rows.join("\r\n")}\r\n` : "";
   return new Blob([content], { type: "text/csv;charset=utf-8" });
 }
