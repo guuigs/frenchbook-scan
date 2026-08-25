@@ -6,6 +6,12 @@ import { OrdersError, lookupOrders } from "@/server/orders";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
+/**
+ * Colocalisée avec Supabase (`eu-west-3`, Paris) plutôt que dans la région
+ * par défaut de Vercel : c'est l'aller-retour vers la base, pas la fonction
+ * elle-même, qui domine le temps de réponse à chaque scan.
+ */
+export const preferredRegion = "cdg1";
 
 /**
  * À quelle commande appartient le livre qu'on vient de scanner ?

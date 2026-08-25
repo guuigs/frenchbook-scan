@@ -11,6 +11,7 @@ import {
   displayPublisher,
   expected,
   isComplete,
+  isSpecialOrder,
   progress,
   sessionTitle,
   totalCounted,
@@ -25,10 +26,28 @@ import { Checklist } from "./Checklist";
 
 interface Flash {
   id: number;
-  tone: "ok" | "alert";
+  /**
+   * « special » et « other » distinguent la commande de destination —
+   * special order en vert, une autre commande en bleu — sans rien dire de la
+   * quantité. « alert » couvre les cas qui réclament un œil : écart de
+   * quantité, hors bon de commande, exemplaire abîmé.
+   */
+  tone: "special" | "other" | "alert";
   counter: string;
   title: string;
   subtitle?: string;
+}
+
+/**
+ * Vert seulement quand toute la répartition part vers une special order,
+ * bleu sinon — y compris quand il n'y a rien à répartir (recherche en échec,
+ * commandes journalières) : mieux vaut le bleu par défaut qu'un vert qui
+ * annoncerait à tort une special order.
+ */
+function allocationTone(allocations: ScanConfirmation["allocations"]): "special" | "other" {
+  return allocations.length > 0 && allocations.every((entry) => isSpecialOrder(entry.orderReference))
+    ? "special"
+    : "other";
 }
 
 /** Le dernier livre compté, cible du bouton « Abîmé ». */
@@ -111,7 +130,7 @@ export function ScanScreen() {
       // dans les commandes journalières sur la foi d'une panne.
       setResolving(null);
       record(line, { counted: 1, damaged: 0, allocations: [] });
-      showFlash("ok", "1/1", line.title);
+      showFlash("other", "1/1", line.title);
       return;
     }
 
@@ -137,7 +156,7 @@ export function ScanScreen() {
 
     setResolving(null);
     record(line, { counted: 1, damaged: 0, allocations });
-    showFlash("ok", "1/1", line.title);
+    showFlash(allocationTone(allocations), "1/1", line.title);
   };
 
   const onCode = (code: string) => {
@@ -289,13 +308,17 @@ export function ScanScreen() {
           key={flash.id}
           aria-live="polite"
           className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center text-white ${
-            flash.tone === "ok" ? "bg-[#0f7b34]/95" : "bg-[#a4232a]/95"
+            flash.tone === "alert"
+              ? "bg-[#a4232a]/95"
+              : flash.tone === "special"
+                ? "bg-[#0f7b34]/95"
+                : "bg-[#1d4ed8]/95"
           }`}
         >
-          {flash.tone === "ok" ? (
-            <IconCheck className="h-12 w-12" />
-          ) : (
+          {flash.tone === "alert" ? (
             <IconAlert className="h-12 w-12" />
+          ) : (
+            <IconCheck className="h-12 w-12" />
           )}
           <p className="mt-3 font-mono text-[44px] leading-none font-medium tabular-nums">
             {flash.counter}
@@ -316,12 +339,15 @@ export function ScanScreen() {
             record(line, confirmation);
             setPendingLine(null);
             /*
-             * Le voile confirme d'un coup d'œil que l'enregistrement a eu lieu.
-             * La commande de destination ne s'y affiche plus : elle se retrouve
+             * Le voile confirme d'un coup d'œil que l'enregistrement a eu
+             * lieu, et sa couleur dit si c'est parti vers une special order —
+             * le nom de la commande, lui, ne s'y affiche pas : il se retrouve
              * au récapitulatif du carton et sur la fiche du livre.
              */
             showFlash(
-              confirmation.counted === expected(line) ? "ok" : "alert",
+              confirmation.counted === expected(line)
+                ? allocationTone(confirmation.allocations)
+                : "alert",
               `${confirmation.counted}/${expected(line)}`,
               line.title,
             );

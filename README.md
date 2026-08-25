@@ -17,7 +17,7 @@ elle produit un récapitulatif des écarts et efface tout.
 | 1. Capture | Les pages du bon sont photographiées une à une, ou importées depuis la photothèque. Elles s'accumulent dans une zone de préparation où l'on peut retirer une photo ratée avant de lancer la lecture. |
 | 2. Lecture | Chaque page passe dans l'**endpoint OCR documentaire de Mistral**, côté serveur, sous un schéma JSON strict. |
 | 3. Contrôle | Seules les lignes dont l'**ISBN ou la quantité** restent douteux remontent, avec la photo de la page en regard pour trancher. |
-| 4. Scan | Caméra en continu. Un exemplaire attendu → flash vert bref, sans commande affichée. Plusieurs exemplaires, ou titre déjà complet → feuille de saisie, avec la répartition par commande. |
+| 4. Scan | Caméra en continu. Un exemplaire attendu → flash bref, vert (special order) ou bleu (autre commande), sans nom de commande affiché. Plusieurs exemplaires, ou titre déjà complet → feuille de saisie, avec la répartition par commande. |
 | 5. Clôture | Manques, surplus, abîmés, hors commande. Récapitulatif PDF, liste d'import CSV — téléchargeable ou envoyée par mail — puis **purge totale**. |
 
 ## La fiabilité de lecture
@@ -193,20 +193,26 @@ livre est bien dans le carton ne dit donc pas encore où il doit partir.
 interroge un référentiel de commandes par ISBN et affiche ce qu'il en dit :
 quelles commandes attendent ce titre, pour quel client, en quelle quantité.
 
-**La cadence prime sur l'affichage** : la commande de destination ne se voit
-plus au moment du scan, seulement au récapitulatif du carton et sur la fiche
-du livre. Deux cas, deux écrans :
+**La cadence prime sur l'affichage** : le nom de la commande de destination ne
+se voit plus au moment du scan, seulement au récapitulatif du carton et sur la
+fiche du livre. Sa couleur, en revanche, se voit — c'est la seule information
+que le flash donne sur la commande : **vert pour une special order** (une
+référence qui se termine par `SP`, voir `isSpecialOrder` dans `lib/order.ts`),
+**bleu pour une autre commande**. Deux cas, deux écrans :
 
 - **un exemplaire attendu**, le cas de l'immense majorité des lignes : il n'y a
   aucune quantité à trancher, donc aucune saisie à ouvrir. La recherche en base
-  (quelques centaines de millisecondes) se fait sans rien afficher, puis un
-  flash vert plein écran annonce le titre, sans commande ni bouton — il
-  s'efface tout seul, comme n'importe quel autre livre compté. Si plusieurs
-  commandes se disputent le titre, la répartition ne peut pas se deviner : la
-  feuille de saisie s'ouvre à la place.
+  (quelques centaines de millisecondes, la route `/api/orders` étant
+  colocalisée avec Supabase à Paris) se fait sans rien afficher, puis un flash
+  plein écran — vert ou bleu selon la commande — annonce le titre, sans nom de
+  commande ni bouton : il s'efface tout seul, comme n'importe quel autre livre
+  compté. Si plusieurs commandes se disputent le titre, la répartition ne peut
+  pas se deviner : la feuille de saisie s'ouvre à la place.
 - **plusieurs exemplaires attendus, ou un titre déjà complet qui repasse** : là
   il y a une quantité à vérifier, et la feuille de saisie s'ouvre avec son
-  compteur, sa répartition par commande et ses exemplaires abîmés.
+  compteur, sa répartition par commande et ses exemplaires abîmés. Le flash qui
+  suit la confirmation reprend le même code couleur ; un écart de quantité
+  reste rouge, prioritaire sur la couleur de commande.
 
 Un livre reste toujours rattrapable après coup : le bouton « Signaler abîmé »
 de l'écran de scan porte sur le dernier titre compté.
@@ -379,7 +385,9 @@ Le destinataire, lui, n'est pas une variable : il est écrit dans
 `src/server/mail.ts`.
 
 Le déploiement Vercel est standard : connecter le dépôt, aucune configuration
-de build particulière.
+de build particulière. `/api/orders` épingle sa région (`preferredRegion =
+"cdg1"`, Paris) pour rester à côté du projet Supabase (`eu-west-3`) — c'est du
+code, rien à régler côté Vercel.
 
 ### Sur le téléphone
 

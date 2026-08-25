@@ -28,6 +28,16 @@ export function backorder(line: OrderLine): number {
 }
 
 /**
+ * Une commande « special order » se reconnaît à sa référence : c'est le nom
+ * du fichier exporté (`10852SP.xlsx` → `10852SP`), pas une donnée à part —
+ * voir `scripts/commandes-vers-csv.py`. Détecter le suffixe plutôt que
+ * maintenir une liste couvre les prochains lots sans y retoucher.
+ */
+export function isSpecialOrder(orderReference: string): boolean {
+  return /SP$/.test(orderReference);
+}
+
+/**
  * Ce qui arrête l'opérateur : un ISBN qui ne tient pas debout, une quantité
  * absente.
  *
