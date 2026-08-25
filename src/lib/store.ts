@@ -134,7 +134,27 @@ async function readPageOnce(dataUrl: string): Promise<ExtractedPage> {
       body: JSON.stringify({ image: dataUrl }),
     });
   } catch {
-    throw new ReadError("Réseau indisponible. Vérifiez la connexion de l’appareil.", true);
+    /*
+     * On arrive ici quand la requête part et que rien ne revient — jamais sur
+     * une erreur du serveur, qui a son propre message. Ce cas couvre aussi
+     * bien un appareil réellement hors ligne qu'une requête coupée en vol :
+     * bascule wifi/4G, page suspendue par iOS, fonction interrompue par la
+     * plateforme.
+     *
+     * Le message accusait la connexion dans tous les cas. C'était faux la
+     * plupart du temps, et surtout indiagnosticable : l'opérateur vérifiait un
+     * réseau qui marchait pendant que la vraie cause restait invisible.
+     * `navigator.onLine` ne prouve pas qu'on est joignable, mais quand il est
+     * faux on est certain d'être hors ligne — c'est le seul des deux cas qu'on
+     * peut affirmer, alors on n'affirme que celui-là.
+     */
+    const horsLigne = typeof navigator !== "undefined" && navigator.onLine === false;
+    throw new ReadError(
+      horsLigne
+        ? "Appareil hors ligne. Reconnectez-vous, la lecture reprendra."
+        : "La page n’a pas pu être lue : la requête est partie sans réponse. Réessayez.",
+      true,
+    );
   }
 
   const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
@@ -220,10 +240,15 @@ export const useCarton = create<CartonState>()(
            * Les pages étaient lues l'une après l'autre : sur un bon de six
            * pages, l'opérateur attendait six fois le temps d'un aller-retour
            * Mistral. Elles sont indépendantes, donc on les traite en parallèle.
-           * La limite à trois évite de saturer la bande passante de l'entrepôt
-           * et de déclencher les quotas de l'API.
+           *
+           * Deux et non trois : chaque page monte un ou deux mégaoctets, et
+           * trois envois simultanés saturaient l'uplink d'un entrepôt. Le
+           * transfert s'étirait, et avec lui la fenêtre pendant laquelle une
+           * bascule wifi/4G casse une requête en vol — le téléphone restant
+           * affiché « connecté » tout du long. Le temps perdu est marginal :
+           * c'est l'attente de Mistral, pas l'envoi, qui domine.
            */
-          const perPage = await mapWithConcurrency(files, 3, async (file, index) => {
+          const perPage = await mapWithConcurrency(files, 2, async (file, index) => {
             const dataUrl = await prepareForUpload(file);
             await savePage(index, dataUrl);
 

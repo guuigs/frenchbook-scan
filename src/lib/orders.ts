@@ -20,7 +20,14 @@ export async function lookupOrders(isbn: string): Promise<OrderMatch[]> {
       body: JSON.stringify({ isbn }),
     });
   } catch {
-    throw new OrdersLookupError("Référentiel injoignable. Vérifiez la connexion.");
+    // Même distinction qu'à la lecture du bon (`store.ts`) : hors ligne est le
+    // seul des deux cas qu'on puisse affirmer, donc le seul qu'on affirme.
+    const horsLigne = typeof navigator !== "undefined" && navigator.onLine === false;
+    throw new OrdersLookupError(
+      horsLigne
+        ? "Appareil hors ligne. La commande n’a pas pu être vérifiée."
+        : "Référentiel sans réponse. La commande n’a pas pu être vérifiée.",
+    );
   }
 
   const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;

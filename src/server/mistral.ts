@@ -55,9 +55,18 @@ async function post(path: string, body: unknown): Promise<unknown> {
       Accept: "application/json",
     },
     body: JSON.stringify(body),
-    // Une page dense peut demander une trentaine de secondes ; au-delà, mieux
-    // vaut rendre la main que laisser l'opérateur devant un écran figé.
-    signal: AbortSignal.timeout(55_000),
+    /*
+     * Une page dense peut demander une trentaine de secondes ; au-delà, mieux
+     * vaut rendre la main que laisser l'opérateur devant un écran figé.
+     *
+     * 45 s et non 55 : la fonction est coupée net par la plateforme à 60 s
+     * (`maxDuration` dans `api/ocr/route.ts`), et une coupure ne rend aucune
+     * réponse — le navigateur ne peut alors que la présenter comme une panne
+     * de réseau, ce qu'elle n'est pas. Les 15 s de marge servent à recevoir
+     * l'image, la décoder et sérialiser l'erreur, pour que le dépassement
+     * ressorte en 504 lisible et réessayable plutôt qu'en connexion perdue.
+     */
+    signal: AbortSignal.timeout(45_000),
   });
 
   if (!response.ok) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useCarton } from "@/lib/store";
+import { useWakeLock } from "@/lib/useWakeLock";
 import { SCAN_REGION, useBarcodeScanner } from "@/lib/useBarcodeScanner";
 import { formatIsbn } from "@/lib/isbn";
 import { play, unlockAudio } from "@/lib/feedback";
@@ -383,38 +384,4 @@ export function ScanScreen() {
       {showChecklist ? <Checklist onClose={() => setShowChecklist(false)} /> : null}
     </main>
   );
-}
-
-/**
- * Empêche l'écran de s'éteindre pendant le comptage : l'opérateur a les mains
- * prises et ne peut pas rallumer toutes les trente secondes.
- */
-function useWakeLock(active: boolean) {
-  useEffect(() => {
-    if (!active || typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
-
-    let sentinel: WakeLockSentinel | null = null;
-    let released = false;
-
-    const request = async () => {
-      try {
-        sentinel = await navigator.wakeLock.request("screen");
-      } catch {
-        // Refusé (batterie faible, onglet en arrière-plan) : sans gravité.
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !released) void request();
-    };
-
-    void request();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      released = true;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      void sentinel?.release();
-    };
-  }, [active]);
 }

@@ -1,9 +1,19 @@
 "use client";
 
 import { useCarton } from "@/lib/store";
+import { useWakeLock } from "@/lib/useWakeLock";
 
 export function Processing() {
   const progress = useCarton((state) => state.progress);
+
+  /*
+   * Lire un bon de plusieurs pages peut demander une minute, pendant laquelle
+   * l'opérateur n'a rien à toucher — l'écran s'éteignait donc tout seul. iOS
+   * suspend alors la page, et les requêtes OCR en vol tombent sans réponse :
+   * l'échec remontait en « réseau indisponible » alors que la connexion
+   * n'avait jamais été perdue.
+   */
+  useWakeLock(true);
 
   const pageCount = Math.max(progress?.pageCount ?? 1, 1);
   const done = Math.min(progress?.pageIndex ?? 0, pageCount);
