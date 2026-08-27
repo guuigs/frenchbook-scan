@@ -207,3 +207,16 @@ export async function importOrderLines(
   });
   return typeof rendu === "number" && Number.isFinite(rendu) ? rendu : 0;
 }
+
+/**
+ * Retire une commande entière du référentiel. Rend le nombre de lignes ôtées.
+ *
+ * C'est le pendant de l'import, et il existe pour lui : un dépôt qui entre de
+ * travers — surtout par courriel, où personne ne relit avant — doit pouvoir se
+ * reprendre d'un geste plutôt que par un accès direct à la base. Un appel sur
+ * une référence absente ne fait rien et rend 0.
+ */
+export async function deleteOrderLines(reference: string): Promise<number> {
+  const rendu = await appeler("delete_order_lines", { p_reference: reference });
+  return typeof rendu === "number" && Number.isFinite(rendu) ? rendu : 0;
+}

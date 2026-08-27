@@ -21,6 +21,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "read-excel-file": "^9.3.10",
+    "resend": "^6.24.0",
     "zustand": "^5.0.14",
     "zxing-wasm": "^3.1.2"
   },

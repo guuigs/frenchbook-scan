@@ -370,6 +370,7 @@ Trois variables facultatives :
 | `MAIL_FROM` | Adresse d'expédition. Obligatoire dès que le mail est activé, sans valeur par défaut. |
 | `SUPABASE_URL` | Projet du référentiel de commandes. |
 | `SUPABASE_SECRET_KEY` | Clé **secrète** du projet. Voir `supabase/README.md`. |
+| `RESEND_WEBHOOK_SECRET` | Signature du webhook de réception (`whsec_…`). Active le dépôt d'une commande par courriel. |
 
 Les deux vont ensemble : sans l'une ou l'autre, le bouton répond laquelle
 manque plutôt que d'échouer sans raison lisible.
@@ -388,6 +389,38 @@ Le déploiement Vercel est standard : connecter le dépôt, aucune configuration
 de build particulière. `/api/orders` épingle sa région (`preferredRegion =
 "cdg1"`, Paris) pour rester à côté du projet Supabase (`eu-west-3`) — c'est du
 code, rien à régler côté Vercel.
+
+### Déposer une commande par courriel
+
+Le référentiel s'alimente de deux façons : l'écran « Ajouter une commande » des
+réglages, et une adresse de réception à qui l'on transfère le fichier du
+fournisseur. Le second chemin fait le même travail que le premier, sans
+téléphone.
+
+Mise en place, côté Resend : activer la réception (Emails → Receiving), créer un
+webhook sur l'événement `email.received` pointant vers
+`https://<domaine>/api/orders/inbound`, et reporter le secret `whsec_…` dans
+`RESEND_WEBHOOK_SECRET`.
+
+Ce qui distingue ce chemin de l'écran tient en une phrase : **personne ne relit
+avant que ça n'entre en base**. D'où trois règles qui n'ont pas cours ailleurs :
+
+- **l'en-tête est exigé au caractère près**, jamais deviné. Ce n'est pas une
+  précaution de principe : sur les 58 fichiers du premier lot, 25 sont sortis du
+  même logiciel *sans la colonne `Code`*, donc sans ISBN. C'est le refus le plus
+  fréquent, et le courriel de retour nomme la colonne manquante.
+- **un seul expéditeur est autorisé**, écrit dans `src/server/inbound.ts`. Il
+  n'authentifie personne — Resend ne rapporte ni SPF ni DKIM, donc une adresse
+  d'origine reste déclarative. C'est une barrière contre l'erreur et le courrier
+  de passage, pas contre quelqu'un qui vise.
+- **un compte rendu part dans tous les cas**, réussite comprise. C'est ce qui
+  compense le point précédent : un dépôt illégitime est visible dans la minute.
+  Et sans lui, l'absence de message serait ambiguë — dépôt abouti, ou courriel
+  perdu en route ? Le silence ne peut pas vouloir dire deux choses opposées.
+
+Le nom du fichier donne la référence de la commande, l'objet du message donne le
+nom affiché au scan. Un dépôt qui entre de travers se défait par
+`select public.delete_order_lines('<référence>');`.
 
 ### Sur le téléphone
 

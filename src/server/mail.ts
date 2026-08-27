@@ -95,4 +95,40 @@ export async function sendCsv({ reference, filename, csv }: CsvMail): Promise<vo
   }
 }
 
+/**
+ * Compte rendu d'un dépôt reçu par courriel.
+ *
+ * Envoyé **dans tous les cas**, réussite comprise, et c'est délibéré. Deux
+ * raisons, dont la seconde est la vraie :
+ *
+ * — sans accusé, l'absence de message est ambiguë : le dépôt a-t-il abouti, ou
+ *   le courriel s'est-il perdu en route ? Le silence ne peut pas vouloir dire
+ *   deux choses opposées.
+ *
+ * — Resend ne rapporte ni SPF ni DKIM dans son événement : l'adresse d'origine
+ *   est déclarative, donc falsifiable. La liste blanche arrête un curieux, pas
+ *   quelqu'un qui vise. Ce compte rendu est ce qui rend un dépôt illégitime
+ *   visible dans la minute, et `delete_order_lines` ce qui l'annule.
+ */
+export async function sendImportReport(subject: string, lines: readonly string[]): Promise<void> {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: sender(),
+      to: [RECIPIENT],
+      subject,
+      text: lines.join("\n"),
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!response.ok) {
+    throw new MailError(`Compte rendu non envoyé (${response.status}).`, 502);
+  }
+}
+
 export { RECIPIENT };

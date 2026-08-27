@@ -314,12 +314,40 @@ begin
 end;
 $$;
 
+-- Le pendant de l'import, et il existe pour lui : un dépôt entré de travers —
+-- surtout par courriel, où personne ne relit avant — doit pouvoir se reprendre
+-- d'un geste plutôt que par un accès direct à la base.
+drop function if exists public.delete_order_lines(text);
+
+create function public.delete_order_lines(p_reference text)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_reference text := btrim(coalesce(p_reference, ''));
+  v_supprimees integer;
+begin
+  if length(v_reference) = 0 then
+    raise exception 'Référence de commande vide.' using errcode = '22023';
+  end if;
+
+  delete from catalog.order_lines as l where l.order_reference = v_reference;
+  get diagnostics v_supprimees = row_count;
+  return v_supprimees;
+end;
+$$;
+
+
 -- Mêmes droits que la lecture : le serveur Next.js, et personne d'autre.
 revoke all on function public.count_order_lines(text) from public, anon, authenticated;
 revoke all on function public.import_order_lines(text, text, jsonb)
   from public, anon, authenticated;
 grant execute on function public.count_order_lines(text) to service_role;
 grant execute on function public.import_order_lines(text, text, jsonb) to service_role;
+revoke all on function public.delete_order_lines(text) from public, anon, authenticated;
+grant execute on function public.delete_order_lines(text) to service_role;
 
 
 -- -----------------------------------------------------------------------------
