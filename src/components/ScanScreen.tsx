@@ -40,15 +40,17 @@ interface Flash {
 }
 
 /**
- * Vert seulement quand toute la répartition part vers une special order,
- * bleu sinon — y compris quand il n'y a rien à répartir (recherche en échec,
- * commandes journalières) : mieux vaut le bleu par défaut qu'un vert qui
- * annoncerait à tort une special order.
+ * Vert quand toute la répartition part vers une special order, bleu vers une
+ * autre commande.
+ *
+ * Rouge quand il n'y a aucune affectation : le livre est bien compté, mais il
+ * n'est rattaché à personne — une recherche en échec, typiquement. C'était
+ * bleu, donc impossible à distinguer d'un rangement réussi ; l'exemplaire
+ * repartait dans la pile sans que rien ne dise qu'il faudrait y revenir.
  */
-function allocationTone(allocations: ScanConfirmation["allocations"]): "special" | "other" {
-  return allocations.length > 0 && allocations.every((entry) => isSpecialOrder(entry.orderReference))
-    ? "special"
-    : "other";
+function allocationTone(allocations: ScanConfirmation["allocations"]): Flash["tone"] {
+  if (allocations.length === 0) return "alert";
+  return allocations.every((entry) => isSpecialOrder(entry.orderReference)) ? "special" : "other";
 }
 
 /** Le dernier livre compté, cible du bouton « Abîmé ». */
@@ -127,11 +129,15 @@ export function ScanScreen() {
     try {
       matches = await lookupOrders(line.isbn);
     } catch {
-      // Recherche en échec : exemplaire non affecté plutôt que rangé d'office
-      // dans les commandes journalières sur la foi d'une panne.
+      /*
+       * Recherche en échec : exemplaire non affecté plutôt que rangé d'office
+       * dans les commandes journalières sur la foi d'une panne. Le voile passe
+       * au rouge et le dit — le livre est compté, mais il reste à rattacher, et
+       * c'est maintenant qu'on peut le mettre de côté.
+       */
       setResolving(null);
       record(line, { counted: 1, damaged: 0, allocations: [] });
-      showFlash("other", "1/1", line.title);
+      showFlash("alert", "1/1", line.title, "commande non vérifiée");
       return;
     }
 

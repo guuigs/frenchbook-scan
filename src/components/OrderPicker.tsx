@@ -25,8 +25,27 @@ export function splitTotal(split: Split): number {
  * L'exemplaire tombe donc tout seul sur la bonne commande dans le cas courant,
  * celui d'un titre attendu par un seul client. Quand il y en a plusieurs,
  * c'est une proposition, pas une décision : l'opérateur a le livre en main.
+ *
+ * **Une seule commande candidate emporte tout, quel que soit son reste à
+ * servir.** Le plafond par `quantityRemaining` répartit entre plusieurs
+ * commandes ; appliqué à une commande unique, il ne répartissait rien du tout.
+ * Une ligne réservée — « déjà là » ou « le fournisseur ne servira pas », soit
+ * 5 509 lignes du référentiel dont 4 413 en special order — annonce un reste
+ * nul : le livre qui sortait pourtant du carton n'était affecté à personne, et
+ * finissait en « non affecté » sans que rien ne le signale. Or il n'y a rien à
+ * arbitrer quand une seule commande attend ce titre : les exemplaires en main
+ * lui reviennent, c'est le référentiel qui est en retard sur le carton.
+ *
+ * Le plafond garde tout son sens à plusieurs : ce qui dépasse reste non
+ * réparti, et l'écran l'affiche en rouge pour que l'opérateur tranche.
  */
 export function proposeSplit(matches: readonly OrderMatch[], counted: number): Split {
+  if (counted <= 0) return {};
+
+  if (matches.length === 1) {
+    return { [matches[0].orderReference]: counted };
+  }
+
   const split: Split = {};
   let left = counted;
 
@@ -171,9 +190,16 @@ export function OrderPicker({
                       {match.orderReference}
                     </span>
                   ) : null}
+                  {/*
+                    « réservé » sans plus : l'étiquette disait « rien à
+                    pointer », ce qui était devenu faux — une commande réservée
+                    reçoit désormais l'exemplaire quand elle est la seule à
+                    l'attendre. Elle décrit maintenant ce que dit le
+                    référentiel, elle ne dicte plus le geste.
+                  */}
                   <span className={served ? "text-faint" : "text-foreground"}>
                     {match.reserved
-                      ? "réservé · rien à pointer"
+                      ? "réservé"
                       : served
                         ? "rien à pointer"
                         : `${match.quantityRemaining} à pointer`}
