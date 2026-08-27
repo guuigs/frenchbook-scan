@@ -125,3 +125,85 @@ export async function lookupOrders(isbn: string): Promise<OrderMatch[]> {
   const payload = (await response.json().catch(() => null)) as unknown;
   return Array.isArray(payload) ? payload.map(toMatch).filter((match) => match.orderReference) : [];
 }
+
+// MARK: - Dépôt d'une commande
+
+/**
+ * Appel générique d'une fonction du schéma `public`.
+ *
+ * `lookupOrders` garde son propre appel : ses messages d'erreur parlent de
+ * l'écran de scan, où l'opérateur a un livre en main et rien à corriger. Ceux
+ * de l'import parlent d'un fichier, et n'ont pas les mêmes suites.
+ */
+async function appeler(fonction: string, corps: unknown): Promise<unknown> {
+  const { url, key } = config();
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/rpc/${fonction}`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+      },
+      body: JSON.stringify(corps),
+      // Un import de plusieurs milliers de lignes est une seule insertion, mais
+      // elle voyage : on laisse plus de marge qu'à une recherche par ISBN.
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new OrdersError("Le référentiel n’a pas répondu à temps.", 504);
+    }
+    throw new OrdersError("Référentiel injoignable.", 502);
+  }
+
+  const brut = await response.text();
+
+  if (!response.ok) {
+    // 23505 : la commande existe déjà. C'est un refus attendu, pas une panne —
+    // la base le tranche elle-même, parce qu'elle est la seule à pouvoir le
+    // faire sans se faire doubler par un second import simultané.
+    if (brut.includes("23505") || brut.includes("existe déjà")) {
+      throw new OrdersError("Cette référence de commande existe déjà.", 409);
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new OrdersError("Clé Supabase refusée. Vérifiez SUPABASE_SECRET_KEY.", 502);
+    }
+    if (response.status === 404) {
+      throw new OrdersError(
+        `Fonction ${fonction} absente : le schéma SQL n’a pas été rejoué.`,
+        502,
+      );
+    }
+    throw new OrdersError(`Référentiel en erreur (${response.status}) : ${brut.slice(0, 160)}`, 502);
+  }
+
+  try {
+    return JSON.parse(brut) as unknown;
+  } catch {
+    throw new OrdersError("Réponse illisible du référentiel.", 502);
+  }
+}
+
+/** Combien de lignes portent déjà cette référence. */
+export async function countOrderLines(reference: string): Promise<number> {
+  const rendu = await appeler("count_order_lines", { p_reference: reference });
+  return typeof rendu === "number" && Number.isFinite(rendu) ? rendu : 0;
+}
+
+/** Dépose une commande. Rend le nombre de lignes réellement insérées. */
+export async function importOrderLines(
+  reference: string,
+  customer: string,
+  rows: readonly unknown[],
+): Promise<number> {
+  const rendu = await appeler("import_order_lines", {
+    p_reference: reference,
+    p_customer: customer,
+    p_rows: rows,
+  });
+  return typeof rendu === "number" && Number.isFinite(rendu) ? rendu : 0;
+}

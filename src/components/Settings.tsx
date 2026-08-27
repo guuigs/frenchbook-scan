@@ -6,7 +6,14 @@ import { useCarton } from "@/lib/store";
 import { setSoundEnabled as applySoundSetting } from "@/lib/feedback";
 import { Button, Label, Sheet, Switch } from "./ui";
 
-export function Settings({ onClose }: { onClose: () => void }) {
+export function Settings({
+  onClose,
+  onImport,
+}: {
+  onClose: () => void;
+  /** Ouvre l’écran de dépôt d’une commande, en refermant les réglages. */
+  onImport: () => void;
+}) {
   const soundEnabled = useCarton((state) => state.soundEnabled);
   const setSoundEnabled = useCarton((state) => state.setSoundEnabled);
   const abandonCarton = useCarton((state) => state.abandonCarton);
@@ -36,6 +43,16 @@ export function Settings({ onClose }: { onClose: () => void }) {
             </label>
             <Switch id="sound" checked={soundEnabled} onChange={setSoundEnabled} />
           </div>
+        </section>
+
+        <section>
+          <Label>Référentiel des commandes</Label>
+          <Button variant="secondary" onClick={onImport}>
+            Ajouter une commande
+          </Button>
+          <p className="mt-1.5 px-0.5 text-[13px] text-muted">
+            Dépose un fichier Excel ou CSV dans le référentiel consulté au scan.
+          </p>
         </section>
 
         <section>

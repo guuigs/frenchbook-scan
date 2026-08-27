@@ -22,6 +22,11 @@ const OrderReview = dynamic(() => import("./OrderReview").then((m) => m.OrderRev
 const ScanScreen = dynamic(() => import("./ScanScreen").then((m) => m.ScanScreen), { ssr: false });
 const Summary = dynamic(() => import("./Summary").then((m) => m.Summary), { ssr: false });
 const Settings = dynamic(() => import("./Settings").then((m) => m.Settings), { ssr: false });
+// Embarque le lecteur de tableur : il n’a rien à faire dans le bundle du
+// poste de scan, qui est le seul écran dont le démarrage compte.
+const ImportOrder = dynamic(() => import("./ImportOrder").then((m) => m.ImportOrder), {
+  ssr: false,
+});
 
 type Auth = "checking" | "anonymous" | "authorized";
 
@@ -36,6 +41,7 @@ export function App() {
   const [auth, setAuth] = useState<Auth>("checking");
   const [hydrated, setHydrated] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const phase = useCarton((state) => state.phase);
   const soundEnabled = useCarton((state) => state.soundEnabled);
@@ -103,7 +109,16 @@ export function App() {
       {phase === "scanning" ? <ScanScreen /> : null}
       {phase === "summary" ? <Summary /> : null}
 
-      {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
+      {showSettings ? (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          onImport={() => {
+            setShowSettings(false);
+            setShowImport(true);
+          }}
+        />
+      ) : null}
+      {showImport ? <ImportOrder onClose={() => setShowImport(false)} /> : null}
     </>
   );
 }

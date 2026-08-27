@@ -207,7 +207,123 @@ grant execute on function public.lookup_order_lines(text) to service_role;
 
 
 -- -----------------------------------------------------------------------------
---  5. Vérification
+--  5. Le second point d'entrée : déposer une commande
+--
+--  Jusqu'ici la base était en lecture seule pour l'application, et c'était
+--  toute sa surface. L'écran « Ajouter une commande » demande d'écrire ; plutôt
+--  que d'ouvrir la table, on ouvre une porte de la même forme que la première :
+--  une fonction qui prend exactement ce qu'il faut et ne peut rien faire
+--  d'autre. Elle n'efface rien, ne modifie aucune ligne existante, et ne sait
+--  qu'insérer une commande qui n'existe pas encore.
+--
+--  Le refus du doublon est ici et pas seulement dans l'application : une
+--  vérification faite côté client ne protège que le client. Deux imports
+--  simultanés de la même référence se croiseraient sans que rien ne les arrête
+--  — c'est la base qui doit trancher, et elle seule le peut.
+-- -----------------------------------------------------------------------------
+
+-- Combien de lignes porte déjà cette référence ? Sert à prévenir avant
+-- d'écrire, pour que le refus soit une phrase et non une erreur.
+drop function if exists public.count_order_lines(text);
+
+create function public.count_order_lines(p_reference text)
+returns integer
+language sql
+security definer
+stable
+set search_path = ''
+as $$
+  select count(*)::integer
+  from catalog.order_lines as l
+  where l.order_reference = btrim(coalesce(p_reference, ''));
+$$;
+
+drop function if exists public.import_order_lines(text, text, jsonb);
+
+create function public.import_order_lines(
+  p_reference text,
+  p_customer  text,
+  p_rows      jsonb
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_reference text := btrim(coalesce(p_reference, ''));
+  v_presentes integer;
+  v_inserees  integer;
+begin
+  if length(v_reference) = 0 then
+    raise exception 'Référence de commande vide.' using errcode = '22023';
+  end if;
+
+  select count(*) into v_presentes
+  from catalog.order_lines as l
+  where l.order_reference = v_reference;
+
+  if v_presentes > 0 then
+    raise exception 'La commande % existe déjà (% lignes).', v_reference, v_presentes
+      using errcode = '23505';
+  end if;
+
+  /*
+   * `jsonb_to_recordset` impose le type de chaque champ : une date illisible ou
+   * une quantité textuelle échoue ici plutôt que d'entrer en base sous une
+   * forme approximative. Le filtre sur l'ISBN est la dernière barrière — la
+   * même que celle du convertisseur, répétée parce qu'elle est trop importante
+   * pour ne vivre que dans l'application.
+   */
+  insert into catalog.order_lines (
+    order_reference, customer, isbn, title, author, publisher,
+    supplier_response, shipping_date, reserved, unit_price, discount_rate,
+    quantity_ordered, quantity_pending
+  )
+  select
+    v_reference,
+    btrim(coalesce(p_customer, '')),
+    r.isbn,
+    coalesce(r.title, ''),
+    coalesce(r.author, ''),
+    coalesce(r.publisher, ''),
+    coalesce(r.supplier_response, ''),
+    r.shipping_date,
+    coalesce(r.reserved, false),
+    r.unit_price,
+    r.discount_rate,
+    greatest(coalesce(r.quantity_ordered, 0), 0),
+    greatest(coalesce(r.quantity_pending, 0), 0)
+  from jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb)) as r(
+    isbn              text,
+    title             text,
+    author            text,
+    publisher         text,
+    supplier_response text,
+    shipping_date     date,
+    reserved          boolean,
+    unit_price        numeric,
+    discount_rate     numeric,
+    quantity_ordered  integer,
+    quantity_pending  integer
+  )
+  where r.isbn ~ '^[0-9]{13}$';
+
+  get diagnostics v_inserees = row_count;
+  return v_inserees;
+end;
+$$;
+
+-- Mêmes droits que la lecture : le serveur Next.js, et personne d'autre.
+revoke all on function public.count_order_lines(text) from public, anon, authenticated;
+revoke all on function public.import_order_lines(text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.count_order_lines(text) to service_role;
+grant execute on function public.import_order_lines(text, text, jsonb) to service_role;
+
+
+-- -----------------------------------------------------------------------------
+--  6. Vérification
 --
 --  À exécuter après l'import pour confirmer que tout est en place.
 -- -----------------------------------------------------------------------------
