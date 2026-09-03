@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { decodeCanvas, warmUpDecoder } from "./decoder";
+import { type Decoded, decodeCanvas, warmUpDecoder } from "./decoder";
 import { isBookIsbn, normalizeIsbn } from "./isbn";
 
 /**
@@ -24,7 +24,8 @@ import { isBookIsbn, normalizeIsbn } from "./isbn";
  *    autrement. Le moteur s'en charge en partie (`tryRotate`), et une passe
  *    à 90° faite ici couvre le reste.
  *
- * Le choix du moteur de décodage est traité dans `decoder.ts`.
+ * Le choix du moteur de décodage et des symbologies lues est traité dans
+ * `decoder.ts`.
  *
  * Le décodage est cadencé par `requestVideoFrameCallback` : une tentative par
  * image réellement produite par la caméra, ni plus ni moins.
@@ -223,16 +224,35 @@ export function useBarcodeScanner({ videoRef, onCode, paused, enabled = true }: 
       }
 
       inFlight = true;
-      let text: string | null = null;
+      let read: Decoded | null = null;
       try {
-        text = await decodeCanvas(target);
+        read = await decodeCanvas(target);
       } finally {
         inFlight = false;
       }
-      if (stopped || !text) return;
+      if (stopped || !read) return;
 
-      const code = normalizeIsbn(text ?? "");
+      const code = normalizeIsbn(read.text);
       if (!code) return;
+
+      /*
+       * Un Code 128 n'est retenu que s'il est vraiment un ISBN.
+       *
+       * Cette symbologie est lue parce que certains éditeurs y impriment
+       * l'ISBN au lieu d'un EAN-13 (voir `decoder.ts`). Mais c'est aussi la
+       * symbologie de tout l'appareillage logistique — étiquette de carton,
+       * numéro de colis, code interne du transporteur — dont un entrepôt est
+       * couvert. Contrairement à l'EAN-13, qui est par construction un code
+       * produit, un Code 128 ne dit rien de ce qu'il transporte : la
+       * confirmation sur deux images ne l'écarterait pas, puisqu'une étiquette
+       * de carton reste bien lisible d'une image à l'autre.
+       *
+       * On exige donc le préfixe Bookland et une clé valide. Aucun livre n'est
+       * perdu : ces codes-là encodent exactement les treize chiffres de l'ISBN.
+       * Et l'opérateur n'est pas dérangé par la feuille « Absent du bon » à
+       * chaque fois que l'objectif balaie une palette.
+       */
+      if (read.format === "Code128" && !isBookIsbn(code)) return;
 
       const now = Date.now();
       if (now < holdUntilRef.current) return;

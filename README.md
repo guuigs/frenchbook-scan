@@ -477,7 +477,8 @@ fond de scène des dialogues rendu atteignable au clavier.
   code, le cas qui domine la boucle, il rend la main en 1,8 ms là où le portage
   JavaScript en demandait 7,0. Ce dernier (`@zxing/library`) reste en secours si
   le WebAssembly ne se charge pas. Les formats sont restreints aux symbologies
-  du livre.
+  du livre : EAN-13 et ses variantes courtes, **et le Code 128** — voir
+  ci-dessous.
 - **Zustand** + IndexedDB (`idb-keyval`) pour l'état du carton. `localStorage`
   ne conviendrait pas : quotas trop bas pour un bon de deux cents lignes, et
   écriture synchrone qui ferait tressauter l'écran de scan.
@@ -486,6 +487,31 @@ fond de scène des dialogues rendu atteignable au clavier.
   de dépendance ajoutée, pas de connexion SMTP à tenir ouverte en serverless.
 - **Web Audio** pour les bips, avec des timbres distincts entre succès,
   attention et échec.
+
+### Les ISBN imprimés en Code 128
+
+Tout le monde suppose qu'un code-barres de livre est un EAN-13. Ce n'est pas
+toujours vrai. Certains éditeurs — chez nous **Les Presses du Midi**
+(978-2-8127-…), et plus largement les petites maisons et l'impression à la
+demande — impriment un **Code 128** qui encode les treize chiffres de l'ISBN.
+
+Rien ne le laisse voir : même pavé de barres au dos de la couverture, même
+nombre imprimé à côté, et la douchette du libraire le lit sans broncher. Mais
+c'est une autre symbologie, et un décodeur à qui on ne l'a pas demandée ne la
+lira jamais — quelle que soit la lumière, la mise au point ou la patience de
+l'opérateur. Le symptôme est caractéristique : ces livres-là ne scannent
+**jamais**, là où un EAN-13 mal éclairé finit toujours par passer.
+
+Le Code 128 est donc lu, mais pas au même titre que les autres : c'est aussi la
+symbologie de tout l'appareillage logistique d'un entrepôt — étiquettes de
+carton, numéros de colis, codes transporteur. Un Code 128 n'est retenu que s'il
+est **réellement un ISBN** (préfixe 978/979 et clé de contrôle juste). Aucun
+livre n'est perdu, puisque ces codes encodent exactement l'ISBN ; et l'objectif
+peut balayer une palette sans ouvrir la feuille « Absent du bon ».
+
+Le surcoût est nul là où il compterait : sur une image sans code — la très
+grande majorité des images, celle qui fixe la cadence — la recherche passe de
+2,13 ms à 2,15 ms.
 
 ## Organisation
 

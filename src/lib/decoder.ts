@@ -27,9 +27,43 @@ import {
  * charge pas, mieux vaut scanner lentement que pas du tout.
  */
 
-const FORMATS = ["EAN-13", "EAN-8", "UPC-A", "UPC-E"] as const;
+/**
+ * Symbologies acceptées.
+ *
+ * L'EAN-13 est la norme du livre : c'est le code Bookland, celui que porte la
+ * quasi-totalité des quatrièmes de couverture. Les variantes UPC et EAN-8
+ * couvrent les rares étiquettes courtes recollées par un distributeur.
+ *
+ * **Le Code 128 est là pour une raison précise.** Certains éditeurs — chez
+ * nous Les Presses du Midi (978-2-8127-…), et plus généralement les petites
+ * maisons et l'impression à la demande — n'impriment pas un EAN-13 mais un
+ * Code 128 qui encode les treize chiffres de l'ISBN. À l'œil c'est le même
+ * pavé de barres surmonté du même nombre, et la douchette du libraire le lit
+ * sans broncher ; mais pour un décodeur c'est une autre symbologie, et tant
+ * qu'elle n'est pas demandée le code n'est jamais lu, quelle que soit la
+ * qualité de la visée. Les trois exemplaires qui ont motivé ce correctif
+ * (9782812714757, 9782812713606, 9782812707773) ne sortaient rien avec la
+ * liste précédente et sortent leur ISBN du premier coup avec celle-ci.
+ *
+ * Le coût est nul là où il compterait : sur une image sans code — la très
+ * grande majorité des images, celle qui fixe la cadence — la recherche passe
+ * de 2,13 ms à 2,15 ms, mesuré sur la bande réellement analysée.
+ */
+const FORMATS = ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128"] as const;
 
-type Decoder = (canvas: HTMLCanvasElement) => Promise<string | null>;
+/**
+ * Une lecture, avec la symbologie qui l'a produite.
+ *
+ * L'appelant en a besoin : l'EAN-13 est un code de produit de détail, un
+ * Code 128 est aussi bien l'étiquette logistique du carton posé à côté. Ils ne
+ * méritent pas la même confiance, et c'est `useBarcodeScanner` qui tranche.
+ */
+export interface Decoded {
+  text: string;
+  format: string;
+}
+
+type Decoder = (canvas: HTMLCanvasElement) => Promise<Decoded | null>;
 
 // MARK: - Moteur de secours : portage JavaScript
 
@@ -39,14 +73,28 @@ jsHints.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.EAN_8,
   BarcodeFormat.UPC_A,
   BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
 ]);
 
 const jsReader = new MultiFormatOneDReader(jsHints);
 
+/** Aligne le nom de symbologie du portage JS sur celui du WebAssembly. */
+const JS_FORMAT_NAMES: Partial<Record<BarcodeFormat, string>> = {
+  [BarcodeFormat.EAN_13]: "EAN-13",
+  [BarcodeFormat.EAN_8]: "EAN-8",
+  [BarcodeFormat.UPC_A]: "UPC-A",
+  [BarcodeFormat.UPC_E]: "UPC-E",
+  [BarcodeFormat.CODE_128]: "Code128",
+};
+
 const decodeWithJs: Decoder = async (canvas) => {
   try {
     const source = new HTMLCanvasElementLuminanceSource(canvas);
-    return jsReader.decode(new BinaryBitmap(new HybridBinarizer(source)), jsHints).getText();
+    const result = jsReader.decode(new BinaryBitmap(new HybridBinarizer(source)), jsHints);
+    return {
+      text: result.getText(),
+      format: JS_FORMAT_NAMES[result.getBarcodeFormat()] ?? "",
+    };
   } catch {
     return null;
   }
@@ -85,7 +133,8 @@ async function loadWasmDecoder(): Promise<Decoder> {
         maxNumberOfSymbols: 1,
       },
     );
-    return results[0]?.text ?? null;
+    const first = results[0];
+    return first ? { text: first.text, format: first.format } : null;
   };
 
   // Première invocation à vide : la compilation du module coûte ~100 ms, autant
@@ -112,7 +161,7 @@ export function warmUpDecoder(): void {
     .catch(() => decodeWithJs);
 }
 
-export async function decodeCanvas(canvas: HTMLCanvasElement): Promise<string | null> {
+export async function decodeCanvas(canvas: HTMLCanvasElement): Promise<Decoded | null> {
   if (wasmDecoder) return wasmDecoder(canvas);
   if (!wasmLoading) warmUpDecoder();
   const decoder = await (wasmLoading ?? Promise.resolve(decodeWithJs));
