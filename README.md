@@ -513,6 +513,39 @@ Le surcoût est nul là où il compterait : sur une image sans code — la très
 grande majorité des images, celle qui fixe la cadence — la recherche passe de
 2,13 ms à 2,15 ms.
 
+### Les revues, dont le code-barres ne porte pas d'ISBN
+
+Le cas inverse existe aussi, et il ne se corrige pas : une revue vendue en
+kiosque porte un **code presse**. C'est un EAN-13 parfaitement ordinaire, que
+l'application lit sans difficulté — mais voici ce qu'il contient :
+
+| | imprimé au-dessus des barres | dans le code-barres |
+| --- | --- | --- |
+| préfixe | | `378` |
+| publication | `M 08145` | `08145` |
+| prix | `F: 12,00 €` | `1200` |
+| clé | | `1` |
+
+**Le titre et le prix, rien d'autre.** Pas de numéro de livraison, pas d'ISBN.
+Deux numéros différents de la même revue donnent donc exactement le même
+code-barres : le n° 300 et le n° 305 se lisent tous deux `3780814512001`, alors
+que leurs ISBN diffèrent (`2-84387-305-3` et `2-84387-311-8`). L'ISBN, lui,
+n'est imprimé qu'en toutes lettres à côté du cadre.
+
+Aucun réglage de décodeur n'y changera quoi que ce soit. Ce qui se corrige,
+c'est la réponse de l'application. Elle disait « Ce code n'a pas la forme d'un
+ISBN. Vérifiez que c'est bien le code-barres du livre » — et envoyait
+l'opérateur chercher sur la couverture un second code-barres qui n'existe pas.
+Elle reconnaît maintenant le code presse, affiche `M 08145 · 12,00 €`, dit que
+l'ISBN n'y est pas, et propose en action principale la recherche dans le bon —
+« Enregistrer hors commande », presque toujours le mauvais geste ici puisque le
+titre *est* sur le bon sous son ISBN, passe au second rang.
+
+Le complément à cinq chiffres qui porte le numéro de la livraison (`03050` pour
+le n° 305) n'est délibérément pas lu : il faudrait l'activer sur toutes les
+images, et sur un livre anglais portant un complément de prix ces cinq chiffres
+viendraient se coller à l'ISBN et empêcheraient de retrouver la ligne du bon.
+
 ## Organisation
 
 ```
@@ -531,6 +564,7 @@ src/
 │   └── auth.ts
 ├── lib/
 │   ├── isbn.ts             Normalisation et clés de contrôle
+│   ├── press.ts            Le code presse des revues, qui n'a pas d'ISBN
 │   ├── reconciler.ts       Lecture en lignes, contrôles, consolidation
 │   ├── order.ts            Calculs d'écarts
 │   ├── store.ts            État du carton (Zustand + IndexedDB)

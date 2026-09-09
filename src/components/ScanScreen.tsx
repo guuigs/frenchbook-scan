@@ -370,6 +370,17 @@ export function ScanScreen() {
       {unknownCode ? (
         <UnknownCodeSheet
           code={unknownCode}
+          /*
+           * Le code lu ne mène à aucune ligne, mais le titre, lui, est peut-être
+           * sur le bon — c'est le cas d'une revue, dont le code-barres ne porte
+           * pas d'ISBN. On passe la main à la liste plutôt que de laisser
+           * l'opérateur ressortir de la feuille pour l'ouvrir lui-même.
+           */
+          onSearch={() => {
+            setUnknownCode(null);
+            setShowChecklist(true);
+            suppress(unknownCode, IGNORE_MS);
+          }}
           onRecord={() => {
             recordExtra(unknownCode);
             setUnknownCode(null);
